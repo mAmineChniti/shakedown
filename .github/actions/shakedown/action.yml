@@ -1,0 +1,55 @@
+name: shakedown
+description: Rehearse database migrations against a throwaway Postgres and report locks, rewrites, and data-safety findings.
+author: mAmineChniti
+branding:
+  icon: shield
+  color: blue
+inputs:
+  pg-version:
+    description: Postgres version for the scratch container
+    required: false
+    default: "16"
+  baseline:
+    description: Path to a schema-only SQL dump to load first
+    required: false
+    default: ""
+  data:
+    description: Path to a data SQL dump to load after the baseline
+    required: false
+    default: ""
+  stats:
+    description: Path to a synthetic row-count file ("table rows" per line)
+    required: false
+    default: ""
+  migrations:
+    description: Space-separated migration files or directories
+    required: true
+  format:
+    description: Output format (text, json, markdown)
+    required: false
+    default: text
+  min-severity:
+    description: Minimum severity that fails the check (info, warning, critical)
+    required: false
+    default: warning
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: stable
+    - name: Build shakedown
+      shell: bash
+      run: go build -o "${GITHUB_WORKSPACE}/shakedown-bin" ./cmd/shakedown
+    - name: Run shakedown
+      shell: bash
+      env:
+        SHAKEDOWN_ARGS: ${{ inputs.migrations }}
+      run: |
+        args=(--pg-version "${{ inputs.pg-version }}" --format "${{ inputs.format }}" \
+              --min-severity "${{ inputs.min-severity }}")
+        [ -n "${{ inputs.baseline }}" ] && args+=(--baseline "${{ inputs.baseline }}")
+        [ -n "${{ inputs.data }}" ] && args+=(--data "${{ inputs.data }}")
+        [ -n "${{ inputs.stats }}" ] && args+=(--stats "${{ inputs.stats }}")
+        # shellcheck disable=SC2086
+        "${GITHUB_WORKSPACE}/shakedown-bin" "${args[@]}" $SHAKEDOWN_ARGS

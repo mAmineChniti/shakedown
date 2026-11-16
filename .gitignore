@@ -1,4 +1,5 @@
-shakedown
-shakedown-bin
+# build artifacts (root only — do NOT ignore cmd/shakedown/)
+/shakedown
+/shakedown-bin
 dist/
 *.test
