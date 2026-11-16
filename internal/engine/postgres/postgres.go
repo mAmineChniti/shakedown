@@ -95,6 +95,9 @@ func New(ctx context.Context, opts engine.Options) (*Engine, error) {
 }
 
 func validVersion(v string) error {
+	if v == "latest" {
+		return nil
+	}
 	for _, r := range v {
 		if !(r >= '0' && r <= '9' || r == '.') {
 			return fmt.Errorf("invalid PG version %q", v)
