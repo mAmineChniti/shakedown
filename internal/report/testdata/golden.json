@@ -1,0 +1,46 @@
+[
+  {
+    "file": "migrations/001_add_age.sql",
+    "duration": 123000000,
+    "rows_affected": 50000,
+    "locks": [
+      {
+        "relation": "users",
+        "mode": "AccessExclusiveLock",
+        "granted": true
+      }
+    ],
+    "findings": [
+      {
+        "check": "data-safety",
+        "severity": "warning",
+        "message": "CREATE INDEX idx_users_age takes a SHARE lock that blocks writes",
+        "evidence": "no CONCURRENTLY in statement",
+        "suggestion": "use CREATE INDEX CONCURRENTLY"
+      }
+    ],
+    "down_file": "migrations/001_add_age.down.sql",
+    "rollback": [
+      {
+        "check": "rollback",
+        "severity": "info",
+        "message": "down migration restores the pre-migration schema",
+        "evidence": "normalized schema diff is empty"
+      }
+    ]
+  },
+  {
+    "file": "migrations/002_drop.sql",
+    "duration": 4000000,
+    "error": "ERROR: column \"missing\" does not exist (SQLSTATE 42703)",
+    "rows_affected": 0,
+    "findings": [
+      {
+        "check": "data-safety",
+        "severity": "critical",
+        "message": "dropping column name discards 50000 non-null values",
+        "evidence": "non-null count = 50000"
+      }
+    ]
+  }
+]

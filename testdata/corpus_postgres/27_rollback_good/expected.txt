@@ -1,0 +1,1 @@
+restores the pre-migration schema

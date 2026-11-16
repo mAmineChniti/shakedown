@@ -1,0 +1,1 @@
+ALTER TABLE users ADD nickname NVARCHAR(50) NOT NULL;

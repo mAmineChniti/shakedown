@@ -1,0 +1,78 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - run: go vet ./...
+
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go test -short ./...
+
+  integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - engine: postgres
+            version: "14"
+          - engine: postgres
+            version: "15"
+          - engine: postgres
+            version: "16"
+          - engine: postgres
+            version: "latest"
+          - engine: mysql
+            version: "8.4"
+          - engine: mysql
+            version: "mariadb:11.4"
+          - engine: sqlite
+            version: ""
+          - engine: mssql
+            version: "2022-latest"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: corpus tests (${{ matrix.engine }} ${{ matrix.version }})
+        env:
+          SHAKEDOWN_ENGINE: ${{ matrix.engine }}
+          SHAKEDOWN_VERSION: ${{ matrix.version }}
+        run: go test ./integration/ -run TestCorpus -v
+
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -trimpath -ldflags="-s -w" -o dist/shakedown-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/shakedown
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shakedown-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/

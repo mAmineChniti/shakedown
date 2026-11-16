@@ -1,0 +1,4 @@
+shakedown
+shakedown-bin
+dist/
+*.test
