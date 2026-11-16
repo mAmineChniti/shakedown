@@ -22,16 +22,19 @@ go test -short ./...          # unit tests — no Docker needed
 go vet ./... && test -z "$(gofmt -l .)"
 
 # Integration: real databases in Docker
-SHAKEDOWN_ENGINE=postgres SHAKEDOWN_VERSION=16 go test ./integration/
+SHAKEDOWN_ENGINE=postgres SHAKEDOWN_VERSION=16   go test ./integration/
 SHAKEDOWN_ENGINE=mysql    SHAKEDOWN_VERSION=8.4  go test ./integration/
 SHAKEDOWN_ENGINE=mysql    SHAKEDOWN_VERSION=mariadb:11.4 go test ./integration/
-SHAKEDOWN_ENGINE=sqlite go test ./integration/   # no Docker needed
+SHAKEDOWN_ENGINE=mssql    SHAKEDOWN_VERSION=2022-latest go test ./integration/
+SHAKEDOWN_ENGINE=oracle   SHAKEDOWN_VERSION=23-slim-faststart go test ./integration/
+SHAKEDOWN_ENGINE=sqlite   go test ./integration/   # no Docker needed
 ```
 
-`SHAKEDOWN_ENGINE` is `postgres` or `mysql`; `SHAKEDOWN_VERSION` is the
-image tag (`14`–`latest` for Postgres, `8.4`/`mariadb:11.4` for MySQL).
-CI runs the corpus against Postgres 14/15/16/latest and MySQL 8.4 +
-MariaDB 11.4.
+`SHAKEDOWN_ENGINE` is one of `postgres`, `mysql`, `sqlite`, `mssql`,
+`oracle`; `SHAKEDOWN_VERSION` is the image tag (`14`–`latest` for
+Postgres, `8.4`/`mariadb:11.4` for MySQL, `2022-latest` for SQL Server,
+`23-slim-faststart` for Oracle; ignored by SQLite).
+CI runs the corpus across the full matrix — see `.github/workflows/ci.yml`.
 
 ## Fixture corpus
 
@@ -61,9 +64,13 @@ cmd/shakedown/          CLI entry — flags, engine selection, exit codes
 internal/engine/        Engine iface + Options/DSN guard
 internal/engine/postgres/   Docker provisioning, pgx stdlib
 internal/engine/mysql/      Docker provisioning, go-sql-driver
+internal/engine/sqlite/     temp-file DB, modernc.org/sqlite
+internal/engine/mssql/      Docker provisioning, go-mssqldb
+internal/engine/oracle/     Docker provisioning, go-ora
 internal/runner/        applies migrations, samples locks, rollback verify
 internal/checks/        pre-flight probes + post-run checks per dialect
-internal/schema/        catalog snapshots (pg_catalog / information_schema)
+internal/schema/        per-dialect catalog snapshots (pg_catalog,
+                        information_schema, sqlite_master, sys.*, user_*)
                         + normalized diff for rollback verification
 internal/synth/         synthetic rows from a "table rows" stats file
 internal/report/        text / JSON / markdown renderers
