@@ -20,6 +20,7 @@ import (
 	"github.com/mAmineChniti/shakedown/internal/engine"
 	"github.com/mAmineChniti/shakedown/internal/engine/mssql"
 	"github.com/mAmineChniti/shakedown/internal/engine/mysql"
+	"github.com/mAmineChniti/shakedown/internal/engine/oracle"
 	"github.com/mAmineChniti/shakedown/internal/engine/postgres"
 	"github.com/mAmineChniti/shakedown/internal/engine/sqlite"
 	"github.com/mAmineChniti/shakedown/internal/runner"
@@ -47,6 +48,9 @@ func TestCorpus(t *testing.T) {
 	case "mssql":
 		eng, err = mssql.New(context.Background(), engine.Options{
 			Engine: engine.MSSQL, Version: envOr("SHAKEDOWN_VERSION", "2022-latest")})
+	case "oracle":
+		eng, err = oracle.New(context.Background(), engine.Options{
+			Engine: engine.Oracle, Version: envOr("SHAKEDOWN_VERSION", "23-slim-faststart")})
 	default:
 		t.Fatalf("unknown SHAKEDOWN_ENGINE %q", name)
 	}
@@ -175,6 +179,26 @@ func resetAndLoad(t *testing.T, ctx context.Context, eng engine.Engine, baseline
 		tblRows.Close()
 		for _, tb := range tables {
 			if _, err := conn.ExecContext(ctx, "DROP TABLE IF EXISTS "+tb); err != nil {
+				t.Fatalf("drop %s: %v", tb, err)
+			}
+		}
+	case engine.Oracle:
+		tblRows, err := conn.QueryContext(ctx, `SELECT table_name FROM user_tables WHERE table_name NOT LIKE '%$%'`)
+		if err != nil {
+			t.Fatalf("list tables: %v", err)
+		}
+		var tables []string
+		for tblRows.Next() {
+			var n string
+			if err := tblRows.Scan(&n); err != nil {
+				tblRows.Close()
+				t.Fatalf("scan table: %v", err)
+			}
+			tables = append(tables, `"`+n+`"`)
+		}
+		tblRows.Close()
+		for _, tb := range tables {
+			if _, err := conn.ExecContext(ctx, "DROP TABLE "+tb+" CASCADE CONSTRAINTS"); err != nil {
 				t.Fatalf("drop %s: %v", tb, err)
 			}
 		}

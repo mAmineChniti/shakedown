@@ -2,145 +2,154 @@
 
 [![CI](https://github.com/mAmineChniti/shakedown/actions/workflows/ci.yml/badge.svg)](https://github.com/mAmineChniti/shakedown/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/go-1.24+-00ADD8?logo=go)](https://go.dev)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Is this migration safe to ship?** shakedown rehearses your migrations
-against a throwaway database and reports what *actually* happened — locks
-held, table rewrites, rows affected, data that would be lost, and whether
-the down migration restores the schema. Every finding carries evidence
-from the real run. No guessing.
+**Migration rehearsal for databases.** shakedown executes your migrations
+against a disposable database — provisioned in Docker or supplied via DSN —
+and reports what actually happened: locks held, table rewrites, rows
+affected, data-loss exposure, and whether the down migration restores the
+schema. Every finding is backed by evidence collected during the run.
 
-<table>
-<tr><td><b>Engines</b></td><td>PostgreSQL · MySQL · MariaDB · SQLite · SQL Server</td></tr>
-<tr><td><b>Provisioning</b></td><td>Docker container or local scratch DSN</td></tr>
-<tr><td><b>Output</b></td><td>Colored terminal · JSON · Markdown</td></tr>
-<tr><td><b>Binary</b></td><td>Single static Go binary, ~few deps</td></tr>
-</table>
+## Supported engines
+
+| Engine | Versions | Scratch provisioning | Lock observation | Rewrite detection |
+|---|---|---|---|---|
+| PostgreSQL | 14+ (`--version 16`, `latest`, …) | Docker `postgres:X` or DSN | `pg_locks` sampling | `relfilenode` diff |
+| MySQL / MariaDB | 8.x, 11.x (`8.4`, `mariadb:11.4`) | Docker `mysql:X`/`mariadb:X` or DSN | `performance_schema.metadata_locks` | `ALGORITHM=` analysis |
+| SQLite | any | temp file (no Docker) | — | — |
+| SQL Server | 2019/2022 (`2022-latest`) | Docker `mssql/server:X` or DSN | `sys.dm_tran_locks` | — |
+| Oracle | 23c (`23-slim-faststart`) | Docker `oracle-free:X` or DSN | — | — |
+
+## What it checks
+
+- **Lock exposure** — samples the engine's lock catalog while each
+  migration executes and reports the lock modes actually acquired.
+- **Table rewrites** — Postgres: a changed `relfilenode` is proof of a
+  rewrite. MySQL: `ALGORITHM=COPY`/`INPLACE`/`INSTANT` clauses are analyzed
+  and reported.
+- **Data safety** — live `count(*)` probes executed before each migration:
+  values discarded by `DROP COLUMN`, rows that would violate new
+  `NOT NULL`/`UNIQUE`/`CHECK`/foreign-key constraints, values that cannot
+  survive a narrowed type, and rows destroyed by `DROP`/`TRUNCATE`.
+- **Row counts** — before/after `count(*)` for every user table.
+- **Rollback** — `NNN_name.down.sql` files are applied in reverse order and
+  the resulting schema is diffed against the pre-migration state
+  (tables, columns, indexes, constraints). Missing down migrations are
+  reported as informational, not errors.
 
 ## Install
 
 ```bash
 go install github.com/mAmineChniti/shakedown/cmd/shakedown@latest
-# or
-go build -o shakedown ./cmd/shakedown
 ```
 
-Requires **Docker** for server engines (Postgres/MySQL/SQL Server), or any
-local scratch database via `--dsn`. SQLite needs nothing at all.
+Requires Go 1.24+ to build. Docker is required for server engines;
+SQLite and `--dsn` modes need no Docker.
 
-## Quickstart
+## Usage
+
+### Interactive
+
+Running `shakedown` with no arguments on a terminal launches a guided
+prompt for engine, version, migrations, baseline, and output format.
+
+### Command line
 
 ```bash
-# Interactive — just run it on a terminal
-shakedown
-
-# Or flags (shorthands in parens)
-shakedown --engine postgres --version 16 \
-  --baseline schema.sql \
-  migrations/
-
-# MySQL 8 / MariaDB 11
-shakedown -e mysql -v 8.4 --baseline schema.sql migrations/
-shakedown -e mysql -v mariadb:11.4 migrations/
-
-# SQLite — file-based, no Docker
-shakedown -e sqlite --baseline schema.sql migrations/
-
-# SQL Server 2022
-shakedown -e mssql -v 2022-latest --baseline schema.sql migrations/
+shakedown [flags] <migration.sql|dir>...
 ```
 
-Got a data dump or want realistic volume? Add `--data dump.sql` or
-`--stats rows.txt` (lines of `table row_count`) so checks run against
-real data instead of an empty schema.
+| Flag | Shorthand | Description |
+|---|---|---|
+| `--engine` | `-e` | `postgres` (default), `mysql`, `sqlite`, `mssql`, `oracle` |
+| `--version` | `-v` | Image version (`16`, `8.4`, `mariadb:11.4`, `2022-latest`, …) |
+| `--dsn` | `-d` | Existing scratch database instead of Docker |
+| `--allow-remote-scratch` | | Permit non-local DSN hosts |
+| `--baseline` | `-b` | Schema-only SQL dump loaded before migrations |
+| `--data` | `-D` | Data dump loaded after the baseline |
+| `--stats` | `-s` | Synthetic row counts (`table rows` per line) |
+| `--format` | `-f` | `text` (default), `json`, `markdown` |
+| `--min-severity` | `-m` | `info`, `warning` (default), `critical` |
 
-Prefer an existing scratch DB? `--dsn` works on every engine — non-local
-hosts are refused unless you pass `--allow-remote-scratch`. shakedown only
-ever touches the disposable database you give it.
+```bash
+# PostgreSQL 16 with a schema dump
+shakedown -e postgres -v 16 -b schema.sql migrations/
 
-## What you get
+# MySQL 8 with synthetic volume
+shakedown -e mysql -v 8.4 -b schema.sql -s rows.txt migrations/
 
+# Existing scratch database
+shakedown -d 'postgres://u:p@localhost:5432/scratch' migrations/
+
+# CI-friendly machine output
+shakedown -f json migrations/ > report.json
 ```
-001_add_age.sql  ok  (281ms, 50000 rows affected, 4 lock observations)
-    lock: AccessExclusiveLock on users (granted=true)
-    [warning] CREATE INDEX idx_users_age takes a SHARE lock that blocks writes
-        suggestion: use CREATE INDEX CONCURRENTLY
-    [rollback/info] down migration restores the pre-migration schema
-```
 
-Per migration, shakedown reports:
+### Output
 
-| Check | What it proves |
+Text output is colorized on terminals and plain when piped (`NO_COLOR`
+is respected). `--format markdown` produces a PR-ready report.
+
+### Exit codes
+
+| Code | Meaning |
 |---|---|
-| **Locks** | Lock modes actually held — sampled live from `pg_locks`, `performance_schema.metadata_locks`, or `sys.dm_tran_locks` mid-run |
-| **Rewrites** | Postgres: `relfilenode` changed = table rewritten. MySQL: `ALGORITHM=COPY/INPLACE/INSTANT` analysis |
-| **Data safety** | Live `count(*)` probes: values lost by `DROP COLUMN`, rows violating new `NOT NULL`/`UNIQUE`/`CHECK`/`FK`, values that won't fit a narrowed type, rows destroyed by `DROP`/`TRUNCATE` |
-| **Row counts** | Before/after `count(*)` per table |
-| **Rollback** | `NNN_name.down.sql` applied in reverse; normalized schema diffed against pre-migration state |
+| `0` | No findings at or above `--min-severity` |
+| `1` | Findings at or above `--min-severity`, or a migration failed |
+| `2` | Tool or input error |
 
-## Flags
+## Design notes
 
-```
--e, --engine          postgres | mysql | sqlite | mssql     (default postgres)
--v, --version         image version — pg: 16, mysql: 8.4, mariadb: 11.4,
-                      mssql: 2022-latest; sqlite ignores it
--d, --dsn             scratch DB DSN instead of Docker
-    --allow-remote-scratch   permit non-local DSN hosts (never on prod)
--b, --baseline        schema-only SQL dump to load first
--D, --data            optional data dump
--s, --stats           synthetic rows: lines of "table rows"
--f, --format          text (default) | json | markdown
--m, --min-severity    info | warning | critical  (default warning)
-```
+- **Evidence over heuristics.** A finding is only reported when the
+  rehearsal produced observable evidence (row counts, lock catalog rows,
+  catalog diffs). Static pattern-matching is deliberately not the source
+  of truth.
+- **Disposable by construction.** Docker engines run in throwaway
+  containers on loopback with random names/ports; teardown happens on
+  exit, interrupt, and failure paths. `--dsn` hosts must be local unless
+  `--allow-remote-scratch` is passed explicitly.
+- **Untrusted input.** Migration files and dumps are only ever executed
+  through the database connection; credentials and DSNs are never logged.
+- **Per-engine dialects.** Catalog queries, lock sources, and type-cast
+  probes are implemented per engine behind `engine.Dialect`; there is no
+  pretend-universal SQL.
 
-## Output & exit codes
+## Known limitations
 
-- `--format text` — colored on terminals, plain when piped (`NO_COLOR` respected)
-- `--format json` — machine-readable, for CI gates
-- `--format markdown` — PR-ready report
-- Exit `0` clean · `1` findings at/above `--min-severity` · `2` tool/input error
-- Missing down migrations are reported as info, never an error
-
-## How it compares
-
-Phase 0 surveyed Squawk, Eugene, pgfence, pgrubic, Atlas lint, SchemaGuard,
-pg-blast-radius, coloph-migrate, tendb, Sustained, and bolvrk. The short
-version: static linters (Squawk, pgfence, bolvrk) are faster and catch
-dangerous *patterns* without a database; dynamic tools (Eugene trace,
-pgfence trace, Atlas) rehearse migrations but none combine a
-**data-bearing baseline**, **row-level pre-flight counts**, and
-**down-migration schema-diff verification** for arbitrary SQL files —
-across four engines. shakedown's edge is proof from an actual run.
-
-## What it does NOT catch
-
-Honest limits — read before trusting it blindly:
-
-- **Logic bugs.** It verifies schema/data effects, not whether your app code still works.
-- **Unrecoverable data.** A down migration can't undelete a dropped column's values; rollback verification reports schema drift, not undelete.
-- **Production contention.** The scratch DB has no real workload — it proves *which* locks a migration takes, not how long they'd queue in prod.
-- **Dynamic SQL.** `EXECUTE` strings, PL/pgSQL, ORM-generated SQL — only the SQL text you give it is checked.
-- **Per-statement rows.** Multi-statement files report summed row counts.
-- **MySQL rewrite certainty.** No `relfilenode` equivalent exists; MySQL rewrite risk is inferred from `ALGORITHM` clauses, not proven.
-- **SQLite locks/constraints.** No lock catalog to sample; constraints live inside `CREATE TABLE` text and aren't diffed.
+- Verifies schema/data effects, not application logic.
+- Rollback verification reports schema drift; it cannot undelete data.
+- Scratch databases have no production workload — lock *modes* are
+  proven, lock *wait times* are not.
+- Dynamic SQL (PL/pgSQL, `EXECUTE` strings, ORM-generated SQL) is not
+  analyzed.
+- Multi-statement files report summed row counts.
+- MySQL has no `relfilenode` equivalent; rewrite risk is inferred from
+  `ALGORITHM` clauses. SQLite and Oracle have no sampled lock source.
+- Oracle does not yet support `--stats` synthetic data.
 
 ## Development
 
 ```bash
 go build ./cmd/shakedown
-go test -short ./...                                   # unit tests, no Docker
+go test -short ./...                                   # unit tests
 
-# Integration corpora — real databases
+# Integration corpora — real databases in Docker
 SHAKEDOWN_ENGINE=postgres SHAKEDOWN_VERSION=16 go test ./integration/
 SHAKEDOWN_ENGINE=mysql    SHAKEDOWN_VERSION=8.4  go test ./integration/
 SHAKEDOWN_ENGINE=mysql    SHAKEDOWN_VERSION=mariadb:11.4 go test ./integration/
 SHAKEDOWN_ENGINE=mssql    SHAKEDOWN_VERSION=2022-latest go test ./integration/
-SHAKEDOWN_ENGINE=sqlite   go test ./integration/   # no Docker needed
+SHAKEDOWN_ENGINE=sqlite   go test ./integration/
+SHAKEDOWN_ENGINE=oracle   SHAKEDOWN_VERSION=23-slim-faststart go test ./integration/
 ```
 
-Fixtures live in `testdata/corpus_<engine>/` — each case has `up.sql`, an
-optional `up.down.sql`, and `expected.txt` describing required findings.
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Fixture corpora live in `testdata/corpus_<engine>/` (`up.sql`, optional
+`up.down.sql`, `expected.txt`).
+
+## Contributing
+
+Issues, bug reports, new engines, and check improvements are welcome.
+Setup, test commands, fixture-corpus conventions, and code-layout notes
+are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

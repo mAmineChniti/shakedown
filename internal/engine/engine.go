@@ -20,6 +20,7 @@ const (
 	MySQL    Dialect = "mysql"
 	SQLite   Dialect = "sqlite"
 	MSSQL    Dialect = "mssql"
+	Oracle   Dialect = "oracle"
 )
 
 // Options controls how the scratch database is obtained.
@@ -79,6 +80,10 @@ func QuoteIdent(d Dialect, s string) string {
 		return "`" + strings.ReplaceAll(s, "`", "``") + "`"
 	case MSSQL:
 		return "[" + strings.ReplaceAll(s, "]", "]]") + "]"
+	case Oracle:
+		// Oracle folds unquoted identifiers to uppercase; quoting must
+		// preserve that or "logs" won't resolve to LOGS.
+		return `"` + strings.ToUpper(strings.ReplaceAll(s, `"`, `""`)) + `"`
 	default:
 		return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 	}

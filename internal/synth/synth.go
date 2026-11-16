@@ -50,6 +50,9 @@ func LoadStats(path string) (map[string]int64, error) {
 // processed in name order; stats authors must respect foreign keys
 // (parent tables need enough rows for child references).
 func Generate(ctx context.Context, db *sql.DB, dialect engine.Dialect, stats map[string]int64) error {
+	if dialect == engine.Oracle {
+		return fmt.Errorf("synthetic data generation is not yet supported for oracle")
+	}
 	names := make([]string, 0, len(stats))
 	for t := range stats {
 		names = append(names, t)

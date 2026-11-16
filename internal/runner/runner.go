@@ -310,7 +310,7 @@ func backendID(ctx context.Context, db *sql.DB, d engine.Dialect) (int64, error)
 	switch d {
 	case engine.MySQL:
 		q = "SELECT CONNECTION_ID()"
-	case engine.SQLite:
+	case engine.SQLite, engine.Oracle:
 		return 0, nil
 	case engine.MSSQL:
 		q = "SELECT @@SPID"
@@ -324,8 +324,8 @@ func backendID(ctx context.Context, db *sql.DB, d engine.Dialect) (int64, error)
 // sampleLocks polls the engine's lock catalog while a migration executes,
 // recording distinct (relation, mode) pairs.
 func (r *Runner) sampleLocks(ctx context.Context, db *sql.DB, migID int64, stop <-chan struct{}, mu *sync.Mutex, seen map[string]bool, res *MigrationResult) {
-	if r.dialect == engine.SQLite {
-		return // SQLite exposes no lock catalog; nothing to sample
+	if r.dialect == engine.SQLite || r.dialect == engine.Oracle {
+		return // no portable lock catalog; nothing to sample
 	}
 	// Sampling is inherently racy: statements faster than the interval can
 	// be missed, which the report acknowledges.

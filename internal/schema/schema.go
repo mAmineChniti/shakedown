@@ -32,6 +32,8 @@ func Snapshot(ctx context.Context, db *sql.DB, dialect engine.Dialect) (map[stri
 		return snapshotSQLite(ctx, db)
 	case engine.MSSQL:
 		return snapshotMSSQL(ctx, db)
+	case engine.Oracle:
+		return snapshotOracle(ctx, db)
 	default:
 		return snapshotPostgres(ctx, db)
 	}

@@ -233,6 +233,12 @@ func (d DataSafety) analyzeAlterAction(ctx context.Context, sess Session, table,
 	case d.Dialect == engine.MSSQL && strings.HasPrefix(up, "ADD ") && !isConstraintAction(up):
 		// T-SQL: ALTER TABLE t ADD col type ... (no COLUMN keyword)
 		return d.addColumnProbe(ctx, sess, table, "ADD COLUMN "+strings.TrimPrefix(a, "ADD "))
+	case d.Dialect == engine.Oracle && strings.HasPrefix(up, "ADD ("):
+		// Oracle: ALTER TABLE t ADD (col type, ...)
+		inner := strings.TrimPrefix(a, "ADD")
+		inner = strings.TrimSpace(inner)
+		inner = strings.TrimPrefix(inner, "(")
+		return d.addColumnProbe(ctx, sess, table, "ADD COLUMN "+inner)
 	case strings.HasPrefix(up, "ALGORITHM=") || strings.Contains(up, " ALGORITHM="):
 		return d.algorithmProbe(a)
 	default:
@@ -463,6 +469,8 @@ func (d DataSafety) typeChangeProbe(ctx context.Context, sess Session, table, co
 			lengthExpr = fmt.Sprintf("length(CAST(%s AS TEXT))", q(d.Dialect, col))
 		} else if d.Dialect == engine.MSSQL {
 			lengthExpr = fmt.Sprintf("LEN(CAST(%s AS NVARCHAR(MAX)))", q(d.Dialect, col))
+		} else if d.Dialect == engine.Oracle {
+			lengthExpr = fmt.Sprintf("LENGTH(TO_CHAR(%s))", q(d.Dialect, col))
 		}
 		if n, err := probe(ctx, sess,
 			fmt.Sprintf("SELECT count(*) FROM %s WHERE %s IS NOT NULL AND %s > %s",
@@ -507,6 +515,9 @@ func castExpr(d engine.Dialect, col, typ string) string {
 	if d == engine.MSSQL {
 		return fmt.Sprintf("CAST(%s AS %s)", c, typ)
 	}
+	if d == engine.Oracle {
+		return fmt.Sprintf("CAST(%s AS %s)", c, oracleCastType(typ))
+	}
 	return fmt.Sprintf("(%s)::%s", c, typ)
 }
 
@@ -547,6 +558,36 @@ func mysqlCastType(t string) string {
 		return "TIME"
 	case strings.HasPrefix(u, "TEXT"):
 		return "CHAR"
+	default:
+		return t
+	}
+}
+
+// oracleCastType maps common type spellings to CAST-compatible Oracle
+// forms (Oracle CAST accepts its own type names; we normalize the few
+// cross-dialect spellings).
+func oracleCastType(t string) string {
+	u := strings.ToUpper(strings.TrimSpace(t))
+	switch {
+	case strings.HasPrefix(u, "VARCHAR") || strings.HasPrefix(u, "NVARCHAR") || strings.HasPrefix(u, "CHAR"):
+		if strings.HasPrefix(u, "VARCHAR") {
+			return "VARCHAR2" + strings.TrimPrefix(t, t[:len("varchar")])
+		}
+		return t
+	case strings.HasPrefix(u, "INT"):
+		return "NUMBER"
+	case strings.HasPrefix(u, "BIGINT"):
+		return "NUMBER"
+	case strings.HasPrefix(u, "DECIMAL") || strings.HasPrefix(u, "NUMERIC"):
+		return t
+	case strings.HasPrefix(u, "DOUBLE") || strings.HasPrefix(u, "FLOAT"):
+		return "BINARY_DOUBLE"
+	case strings.HasPrefix(u, "DATE"):
+		return "DATE"
+	case strings.HasPrefix(u, "TIME"):
+		return "TIMESTAMP"
+	case strings.HasPrefix(u, "TEXT") || strings.HasPrefix(u, "JSON"):
+		return "CLOB"
 	default:
 		return t
 	}

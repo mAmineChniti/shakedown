@@ -46,6 +46,8 @@ jobs:
             version: ""
           - engine: mssql
             version: "2022-latest"
+          - engine: oracle
+            version: "23-slim-faststart"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
