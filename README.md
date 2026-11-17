@@ -12,35 +12,7 @@ schema. Every finding is backed by evidence collected during the run.
 
 ## Demo
 
-A recorded terminal session is in [`demo.cast`](demo.cast) (~50s) — play it
-with [asciinema](https://asciinema.org):
-
-```bash
-asciinema play demo.cast
-```
-
 ![shakedown demo](demo.gif)
-
-It tours the main features end to end:
-
-1. **SQLite rehearsal** — three migrations against a seeded database: a
-   clean add-column, a `DROP TABLE` flagged critical for losing 5,000
-   rows, and a unique index that fails on real duplicate data.
-2. **PostgreSQL rehearsal** — `--stats` synthetic data (50k users / 200k
-   orders), observed lock modes (`ShareLock`, `AccessExclusiveLock`),
-   `relfilenode` table-rewrite detection, row-count drift, and a verified
-   down migration.
-3. **`-f json`** — the same run as machine-readable output for CI.
-4. **`-f markdown`** — a PR-comment-friendly report.
-
-Reproduce any part yourself — `demo/` contains the baselines, migrations,
-and stats file:
-
-```bash
-go run ./cmd/shakedown -e sqlite -b demo/baseline.sql demo/migrations
-go run ./cmd/shakedown -e postgres -v 16 -b testdata/baseline_postgres.sql -s demo/pg_stats.txt demo/pg
-go run ./cmd/shakedown -e sqlite -b demo/baseline.sql -f json demo/migrations/002_drop_logs.sql
-```
 
 ## Supported engines
 
@@ -91,17 +63,33 @@ prompt for engine, version, migrations, baseline, and output format.
 shakedown [flags] <migration.sql|dir>...
 ```
 
-| Flag | Shorthand | Description |
+The positional argument is **the migrations you want to test** — a single
+`.sql` file or a directory of them (applied in filename order; `*.down.sql`
+files are used for rollback verification, not run as migrations).
+
+The flags build the **starting state** the migrations run against:
+
+| Flag | Shorthand | What it is |
 |---|---|---|
-| `--engine` | `-e` | `postgres` (default), `mysql`, `sqlite`, `mssql`, `oracle` |
-| `--version` | `-v` | Image version (`16`, `8.4`, `mariadb:11.4`, `2022-latest`, …) |
-| `--dsn` | `-d` | Existing scratch database instead of Docker |
-| `--allow-remote-scratch` | | Permit non-local DSN hosts |
-| `--baseline` | `-b` | Schema-only SQL dump loaded before migrations |
-| `--data` | `-D` | Data dump loaded after the baseline |
-| `--stats` | `-s` | Synthetic row counts (`table rows` per line) |
-| `--format` | `-f` | `text` (default), `json`, `markdown` |
-| `--min-severity` | `-m` | `info`, `warning` (default), `critical` |
+| `--engine` | `-e` | Database engine: `postgres` (default), `mysql`, `sqlite`, `mssql`, `oracle` |
+| `--version` | `-v` | Engine version / Docker image tag (`16`, `8.4`, `mariadb:11.4`, `2022-latest`, …) |
+| `--baseline` | `-b` | **Schema dump of your current database** — `pg_dump --schema-only`, `mysqldump --no-data`, etc. Loaded first so migrations run against your real tables |
+| `--data` | `-D` | Optional **data dump** loaded after the baseline |
+| `--stats` | `-s` | **Synthetic volume** instead of a data dump: a text file with `table_name row_count` per line (e.g. `orders 500000`). shakedown generates that many rows per table |
+| `--dsn` | `-d` | Use an existing scratch database instead of provisioning one |
+| `--allow-remote-scratch` | | Permit non-local `--dsn` hosts (never use on production) |
+| `--format` | `-f` | Output: `text` (default, colored), `json`, `markdown` |
+| `--min-severity` | `-m` | Lowest severity that fails the run: `info`, `warning` (default), `critical` |
+
+So this command:
+
+```bash
+shakedown -e mysql -v 8.4 -b schema.sql -s rows.txt migrations/
+```
+
+means: *spin up MySQL 8.4 → load `schema.sql` as the current schema →
+generate the row counts in `rows.txt` → run every migration in
+`migrations/` → report locks, rewrites, data loss, and rollback results.*
 
 ```bash
 # PostgreSQL 16 with a schema dump
