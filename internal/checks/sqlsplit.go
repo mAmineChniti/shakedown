@@ -27,7 +27,7 @@ func SplitStatements(sql string) []string {
 		if c == '/' && i+1 < n && sql[i+1] == '*' {
 			cur.WriteString("/*")
 			i += 2
-			for i+1 < n && !(sql[i] == '*' && sql[i+1] == '/') {
+			for i+1 < n && (sql[i] != '*' || sql[i+1] != '/') {
 				cur.WriteByte(sql[i])
 				i++
 			}
@@ -131,7 +131,7 @@ func dollarTagEnd(sql string, i int) int {
 		if cj == '$' {
 			return j + 1
 		}
-		if !(cj == '_' || cj >= 'a' && cj <= 'z' || cj >= 'A' && cj <= 'Z' || cj >= '0' && cj <= '9') {
+		if cj != '_' && (cj < 'a' || cj > 'z') && (cj < 'A' || cj > 'Z') && (cj < '0' || cj > '9') {
 			return i
 		}
 		j++

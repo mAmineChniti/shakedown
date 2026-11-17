@@ -25,7 +25,7 @@ func snapshotSQLite(ctx context.Context, db *sql.DB) (map[string]TableInfo, erro
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 		infos[key{name}] = &TableInfo{
@@ -36,7 +36,7 @@ func snapshotSQLite(ctx context.Context, db *sql.DB) (map[string]TableInfo, erro
 			Constraints: map[string]string{},
 		}
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -57,12 +57,12 @@ func snapshotSQLite(ctx context.Context, db *sql.DB) (map[string]TableInfo, erro
 			var notnull, pk int
 			var dflt sql.NullString
 			if err := colRows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
-				colRows.Close()
+				_ = colRows.Close()
 				return nil, err
 			}
 			infos[k].Columns[name] = typ
 		}
-		colRows.Close()
+		_ = colRows.Close()
 		if err := colRows.Err(); err != nil {
 			return nil, err
 		}
@@ -78,12 +78,12 @@ func snapshotSQLite(ctx context.Context, db *sql.DB) (map[string]TableInfo, erro
 			var seq int
 			var name, unique, origin, partial string
 			if err := idxRows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
-				idxRows.Close()
+				_ = idxRows.Close()
 				return nil, err
 			}
 			idxs = append(idxs, idx{name: name, origin: origin})
 		}
-		idxRows.Close()
+		_ = idxRows.Close()
 		for _, ix := range idxs {
 			infoRows, err := db.QueryContext(ctx,
 				fmt.Sprintf("PRAGMA index_info(%s)", qi(ix.name)))
@@ -95,12 +95,12 @@ func snapshotSQLite(ctx context.Context, db *sql.DB) (map[string]TableInfo, erro
 				var seqno, cid int
 				var colName sql.NullString
 				if err := infoRows.Scan(&seqno, &cid, &colName); err != nil {
-					infoRows.Close()
+					_ = infoRows.Close()
 					return nil, err
 				}
 				cols = append(cols, colName.String)
 			}
-			infoRows.Close()
+			_ = infoRows.Close()
 			kind := "INDEX"
 			if ix.origin == "pk" {
 				kind = "PRIMARY KEY"

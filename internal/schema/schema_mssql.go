@@ -27,7 +27,7 @@ func snapshotMSSQL(ctx context.Context, db *sql.DB) (map[string]TableInfo, error
 	for rows.Next() {
 		var k key
 		if err := rows.Scan(&k.schema, &k.name); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 		infos[k] = &TableInfo{
@@ -38,7 +38,7 @@ func snapshotMSSQL(ctx context.Context, db *sql.DB) (map[string]TableInfo, error
 			Constraints: map[string]string{},
 		}
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func snapshotMSSQL(ctx context.Context, db *sql.DB) (map[string]TableInfo, error
 	if err != nil {
 		return nil, err
 	}
-	defer colRows.Close()
+	defer func() { _ = colRows.Close() }()
 	for colRows.Next() {
 		var s, t, col, typ string
 		if err := colRows.Scan(&s, &t, &col, &typ); err != nil {
@@ -88,7 +88,7 @@ func snapshotMSSQL(ctx context.Context, db *sql.DB) (map[string]TableInfo, error
 	if err != nil {
 		return nil, err
 	}
-	defer idxRows.Close()
+	defer func() { _ = idxRows.Close() }()
 	for idxRows.Next() {
 		var s, t, name, def string
 		if err := idxRows.Scan(&s, &t, &name, &def); err != nil {
@@ -112,7 +112,7 @@ func snapshotMSSQL(ctx context.Context, db *sql.DB) (map[string]TableInfo, error
 	if err != nil {
 		return nil, err
 	}
-	defer conRows.Close()
+	defer func() { _ = conRows.Close() }()
 	for conRows.Next() {
 		var s, t, name, typ string
 		if err := conRows.Scan(&s, &t, &name, &typ); err != nil {

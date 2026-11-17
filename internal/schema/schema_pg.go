@@ -21,8 +21,7 @@ func snapshotPostgres(ctx context.Context, db *sql.DB) (map[string]TableInfo, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
+	defer func() { _ = rows.Close() }()
 	type key struct{ schema, name string }
 	infos := map[key]*TableInfo{}
 	for rows.Next() {
@@ -60,7 +59,7 @@ func snapshotPostgres(ctx context.Context, db *sql.DB) (map[string]TableInfo, er
 	if err != nil {
 		return nil, err
 	}
-	defer colRows.Close()
+	defer func() { _ = colRows.Close() }()
 	for colRows.Next() {
 		var s, t, col, typ string
 		if err := colRows.Scan(&s, &t, &col, &typ); err != nil {
@@ -83,7 +82,7 @@ func snapshotPostgres(ctx context.Context, db *sql.DB) (map[string]TableInfo, er
 	if err != nil {
 		return nil, err
 	}
-	defer idxRows.Close()
+	defer func() { _ = idxRows.Close() }()
 	for idxRows.Next() {
 		var s, t, name, def string
 		if err := idxRows.Scan(&s, &t, &name, &def); err != nil {
@@ -108,7 +107,7 @@ func snapshotPostgres(ctx context.Context, db *sql.DB) (map[string]TableInfo, er
 	if err != nil {
 		return nil, err
 	}
-	defer conRows.Close()
+	defer func() { _ = conRows.Close() }()
 	for conRows.Next() {
 		var s, t, name, def string
 		if err := conRows.Scan(&s, &t, &name, &def); err != nil {

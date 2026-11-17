@@ -99,7 +99,7 @@ func validVersion(v string) error {
 		return nil
 	}
 	for _, r := range v {
-		if !(r >= '0' && r <= '9' || r == '.') {
+		if (r < '0' || r > '9') && r != '.' {
 			return fmt.Errorf("invalid PG version %q", v)
 		}
 	}
@@ -113,10 +113,10 @@ func (e *Engine) waitReady(ctx context.Context) error {
 		db, err := e.Connect(ctx)
 		if err == nil {
 			if err := db.PingContext(ctx); err == nil {
-				db.Close()
+				_ = db.Close()
 				return nil
 			}
-			db.Close()
+			_ = db.Close()
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("postgres did not become ready")

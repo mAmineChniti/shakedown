@@ -45,7 +45,7 @@ func main() {
 func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("shakedown", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.Usage = func() { fmt.Fprint(stderr, usage) }
+	fs.Usage = func() { _, _ = fmt.Fprint(stderr, usage) }
 
 	dbEngine := fs.String("engine", "postgres", "database engine: postgres|mysql|sqlite|mssql|oracle (-e)")
 	version := fs.String("version", "", "image version, e.g. 16, 8.4, mariadb:11.4, 2022-latest (-v)")
@@ -66,13 +66,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	migArgs := fs.Args()
 	if len(migArgs) == 0 {
 		if !stdinIsTTY() {
-			fmt.Fprint(stderr, usage)
+			_, _ = fmt.Fprint(stderr, usage)
 			return 2
 		}
 		var err error
 		migArgs, err = interactive(fs, stderr)
 		if err != nil {
-			fmt.Fprintf(stderr, "shakedown: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "shakedown: %v\n", err)
 			return 2
 		}
 		if len(migArgs) == 0 {
@@ -83,20 +83,20 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	threshold, ok := parseSeverity(*minSev)
 	if !ok {
-		fmt.Fprintf(stderr, "shakedown: invalid --min-severity %q\n", *minSev)
+		_, _ = fmt.Fprintf(stderr, "shakedown: invalid --min-severity %q\n", *minSev)
 		return 2
 	}
 
 	eng, err := newEngine(*dbEngine, *version, *dsn, *allowRemote)
 	if err != nil {
-		fmt.Fprintf(stderr, "shakedown: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "shakedown: %v\n", err)
 		return 2
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := engSetup(ctx, eng, *baseline, *dataDump, *statsFile, stderr); err != nil {
+	if err = engSetup(ctx, eng, *baseline, *dataDump, *statsFile, stderr); err != nil {
 		return 2
 	}
 	defer func() {
@@ -107,7 +107,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	files, err := runner.LoadMigrations(migArgs)
 	if err != nil {
-		fmt.Fprintf(stderr, "shakedown: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "shakedown: %v\n", err)
 		return 2
 	}
 
@@ -115,14 +115,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 	results, runErr := r.Run(ctx, files)
 
 	if err := report.Render(stdout, results, *format); err != nil {
-		fmt.Fprintf(stderr, "shakedown: render: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "shakedown: render: %v\n", err)
 		return 2
 	}
 
 	if runErr != nil {
 		// A failed migration is reported as a critical finding, not a
 		// tool error — exit 1, matching the severity threshold rules.
-		fmt.Fprintf(stderr, "shakedown: %v\n", runErr)
+		_, _ = fmt.Fprintf(stderr, "shakedown: %v\n", runErr)
 		return 1
 	}
 	if report.MaxSeverity(results).Rank() >= threshold.Rank() {
@@ -163,31 +163,31 @@ func newEngine(name, version, dsn string, allowRemote bool) (engine.Engine, erro
 func engSetup(ctx context.Context, eng engine.Engine, baseline, dataDump, statsFile string, stderr io.Writer) error {
 	conn, err := eng.Connect(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "shakedown: connect: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "shakedown: connect: %v\n", err)
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if baseline != "" {
 		if err := loadSQLFile(ctx, conn, baseline); err != nil {
-			fmt.Fprintf(stderr, "shakedown: baseline: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "shakedown: baseline: %v\n", err)
 			return err
 		}
 	}
 	if dataDump != "" {
 		if err := loadSQLFile(ctx, conn, dataDump); err != nil {
-			fmt.Fprintf(stderr, "shakedown: data dump: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "shakedown: data dump: %v\n", err)
 			return err
 		}
 	}
 	if statsFile != "" {
 		stats, err := synth.LoadStats(statsFile)
 		if err != nil {
-			fmt.Fprintf(stderr, "shakedown: stats: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "shakedown: stats: %v\n", err)
 			return err
 		}
 		if err := synth.Generate(ctx, conn, eng.Dialect(), stats); err != nil {
-			fmt.Fprintf(stderr, "shakedown: synthetic data: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "shakedown: synthetic data: %v\n", err)
 			return err
 		}
 	}
@@ -251,7 +251,7 @@ func expandShorthands(args []string) []string {
 		'D': "data", 's': "stats", 'f': "format", 'm': "min-severity",
 	}
 	out := make([]string, 0, len(args))
-	for i := 0; i < len(args); i++ {
+	for i := range len(args) {
 		a := args[i]
 		if len(a) == 2 && a[0] == '-' {
 			if name, ok := long[a[1]]; ok {

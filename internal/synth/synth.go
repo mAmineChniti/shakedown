@@ -117,7 +117,7 @@ func generateTable(ctx context.Context, db *sql.DB, d engine.Dialect, table stri
 	for rowsQ.Next() {
 		var c column
 		if err := rowsQ.Scan(&c.name, &c.typ, &c.deflt, &c.identity, &c.extra); err != nil {
-			rowsQ.Close()
+			_ = rowsQ.Close()
 			return err
 		}
 		// Skip sequence-backed and identity columns: they auto-assign,
@@ -133,7 +133,7 @@ func generateTable(ctx context.Context, db *sql.DB, d engine.Dialect, table stri
 		}
 		cols = append(cols, c)
 	}
-	rowsQ.Close()
+	_ = rowsQ.Close()
 	if err := rowsQ.Err(); err != nil {
 		return err
 	}

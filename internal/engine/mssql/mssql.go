@@ -97,11 +97,11 @@ func (e *Engine) waitReady(ctx context.Context) error {
 		db, err := e.Connect(ctx)
 		if err == nil {
 			if err := db.PingContext(ctx); err == nil {
-				db.Close()
+				_ = db.Close()
 				return nil
 			} else {
 				lastErr = err
-				db.Close()
+				_ = db.Close()
 			}
 		} else {
 			lastErr = err

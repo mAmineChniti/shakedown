@@ -93,52 +93,52 @@ func renderText(w io.Writer, results []runner.MigrationResult, color bool) error
 		if r.Err != "" {
 			status = paint(cRed+cBold, "FAILED", color) + ": " + r.Err
 		}
-		fmt.Fprintf(w, "%s  %s  %s\n",
+		_, _ = fmt.Fprintf(w, "%s  %s  %s\n",
 			paint(cBold, r.File, color), status,
 			paint(cDim, fmt.Sprintf("(%s, %d rows affected, %d lock observations)",
 				r.Duration.Round(1e6), r.RowsAffected, len(r.Locks)), color))
 		for _, l := range r.Locks {
-			fmt.Fprintf(w, "    %s %s on %s (granted=%v)\n",
+			_, _ = fmt.Fprintf(w, "    %s %s on %s (granted=%v)\n",
 				paint(cDim, "lock:", color), l.Mode, l.Relation, l.Granted)
 		}
 		for _, f := range r.Findings {
-			fmt.Fprintf(w, "    [%s] %s", sevColor(f.Severity, color), f.Message)
+			_, _ = fmt.Fprintf(w, "    [%s] %s", sevColor(f.Severity, color), f.Message)
 			if f.Evidence != "" {
-				fmt.Fprintf(w, " %s %s", paint(cDim, "—", color), paint(cDim, f.Evidence, color))
+				_, _ = fmt.Fprintf(w, " %s %s", paint(cDim, "—", color), paint(cDim, f.Evidence, color))
 			}
-			fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w)
 			if f.Suggestion != "" {
-				fmt.Fprintf(w, "        %s %s\n",
+				_, _ = fmt.Fprintf(w, "        %s %s\n",
 					paint(cDim, "suggestion:", color), paint(cDim, f.Suggestion, color))
 			}
 		}
 		for _, f := range r.Rollback {
-			fmt.Fprintf(w, "    [%s/%s] %s", paint(cDim, "rollback", color),
+			_, _ = fmt.Fprintf(w, "    [%s/%s] %s", paint(cDim, "rollback", color),
 				sevColor(f.Severity, color), f.Message)
 			if f.Evidence != "" {
-				fmt.Fprintf(w, " %s %s", paint(cDim, "—", color), paint(cDim, f.Evidence, color))
+				_, _ = fmt.Fprintf(w, " %s %s", paint(cDim, "—", color), paint(cDim, f.Evidence, color))
 			}
-			fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w)
 		}
 	}
 	return nil
 }
 
 func renderMarkdown(w io.Writer, results []runner.MigrationResult) error {
-	fmt.Fprintln(w, "### shakedown migration report")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "| Migration | Result | Duration | Rows | Findings |")
-	fmt.Fprintln(w, "|---|---|---|---|---|")
+	_, _ = fmt.Fprintln(w, "### shakedown migration report")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "| Migration | Result | Duration | Rows | Findings |")
+	_, _ = fmt.Fprintln(w, "|---|---|---|---|---|")
 	for _, r := range results {
 		status := "ok"
 		if r.Err != "" {
 			status = "**FAILED**: " + r.Err
 		}
 		n := len(r.Findings) + len(r.Rollback)
-		fmt.Fprintf(w, "| `%s` | %s | %s | %d | %d |\n",
+		_, _ = fmt.Fprintf(w, "| `%s` | %s | %s | %d | %d |\n",
 			r.File, status, r.Duration.Round(1e6), r.RowsAffected, n)
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 
 	sevIcon := func(s checks.Severity) string {
 		switch s {
@@ -169,11 +169,11 @@ func renderMarkdown(w io.Writer, results []runner.MigrationResult) error {
 		if len(lines) == 0 {
 			continue
 		}
-		fmt.Fprintf(w, "**`%s`**\n\n", r.File)
+		_, _ = fmt.Fprintf(w, "**`%s`**\n\n", r.File)
 		for _, l := range lines {
-			fmt.Fprintln(w, l)
+			_, _ = fmt.Fprintln(w, l)
 		}
-		fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w)
 	}
 	return nil
 }

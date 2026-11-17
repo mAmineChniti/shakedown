@@ -110,7 +110,7 @@ func (e *Engine) setupUser(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	for _, stmt := range []string{
 		fmt.Sprintf("CREATE USER %s IDENTIFIED BY %s", scratchUser, scratchPass),
 		fmt.Sprintf("GRANT CONNECT, RESOURCE, UNLIMITED TABLESPACE TO %s", scratchUser),
@@ -134,10 +134,10 @@ func (e *Engine) waitReady(ctx context.Context) error {
 		db, err := e.Connect(ctx)
 		if err == nil {
 			if err := db.PingContext(ctx); err == nil {
-				db.Close()
+				_ = db.Close()
 				return nil
 			}
-			db.Close()
+			_ = db.Close()
 		}
 		lastErr = err
 		if time.Now().After(deadline) {

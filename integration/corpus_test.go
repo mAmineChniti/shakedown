@@ -116,7 +116,7 @@ func resetAndLoad(t *testing.T, ctx context.Context, eng engine.Engine, baseline
 	if err != nil {
 		t.Fatalf("connect for reset: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	conn.SetMaxOpenConns(1)
 
 	switch eng.Dialect() {
@@ -132,12 +132,12 @@ func resetAndLoad(t *testing.T, ctx context.Context, eng engine.Engine, baseline
 		for tblRows.Next() {
 			var n string
 			if err := tblRows.Scan(&n); err != nil {
-				tblRows.Close()
+				_ = tblRows.Close()
 				t.Fatalf("scan table: %v", err)
 			}
 			tables = append(tables, `"`+n+`"`)
 		}
-		tblRows.Close()
+		_ = tblRows.Close()
 		if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
 			t.Fatalf("fk off: %v", err)
 		}
@@ -171,12 +171,12 @@ func resetAndLoad(t *testing.T, ctx context.Context, eng engine.Engine, baseline
 		for tblRows.Next() {
 			var n string
 			if err := tblRows.Scan(&n); err != nil {
-				tblRows.Close()
+				_ = tblRows.Close()
 				t.Fatalf("scan table: %v", err)
 			}
 			tables = append(tables, "["+n+"]")
 		}
-		tblRows.Close()
+		_ = tblRows.Close()
 		for _, tb := range tables {
 			if _, err := conn.ExecContext(ctx, "DROP TABLE IF EXISTS "+tb); err != nil {
 				t.Fatalf("drop %s: %v", tb, err)
@@ -191,12 +191,12 @@ func resetAndLoad(t *testing.T, ctx context.Context, eng engine.Engine, baseline
 		for tblRows.Next() {
 			var n string
 			if err := tblRows.Scan(&n); err != nil {
-				tblRows.Close()
+				_ = tblRows.Close()
 				t.Fatalf("scan table: %v", err)
 			}
 			tables = append(tables, `"`+n+`"`)
 		}
-		tblRows.Close()
+		_ = tblRows.Close()
 		for _, tb := range tables {
 			if _, err := conn.ExecContext(ctx, "DROP TABLE "+tb+" CASCADE CONSTRAINTS"); err != nil {
 				t.Fatalf("drop %s: %v", tb, err)
@@ -214,12 +214,12 @@ func resetAndLoad(t *testing.T, ctx context.Context, eng engine.Engine, baseline
 		for tblRows.Next() {
 			var n string
 			if err := tblRows.Scan(&n); err != nil {
-				tblRows.Close()
+				_ = tblRows.Close()
 				t.Fatalf("scan table: %v", err)
 			}
 			tables = append(tables, "`"+n+"`")
 		}
-		tblRows.Close()
+		_ = tblRows.Close()
 		if _, err := conn.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS=0"); err != nil {
 			t.Fatalf("fk checks off: %v", err)
 		}

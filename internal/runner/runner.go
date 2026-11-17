@@ -101,7 +101,7 @@ func (r *Runner) Run(ctx context.Context, files []string) ([]MigrationResult, er
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Pin the migration pool to ONE connection: database/sql would
 	// otherwise hand each ExecContext a different backend, breaking
@@ -117,7 +117,7 @@ func (r *Runner) Run(ctx context.Context, files []string) ([]MigrationResult, er
 	if err != nil {
 		return nil, err
 	}
-	defer samplerDB.Close()
+	defer func() { _ = samplerDB.Close() }()
 	samplerDB.SetMaxOpenConns(1)
 
 	// Identify the migration session so the sampler can watch exactly the
@@ -381,21 +381,22 @@ func (r *Runner) sampleLocks(ctx context.Context, db *sql.DB, migID int64, stop 
 		}
 		var rows *sql.Rows
 		var err error
-		if r.dialect == engine.MSSQL {
+		switch r.dialect {
+		case engine.MSSQL:
 			rows, err = db.QueryContext(ctx, `
 				SELECT COALESCE(OBJECT_NAME(resource_associated_entity_id), request_mode),
 				       request_mode, request_status = 'GRANT'
 				FROM sys.dm_tran_locks
 				WHERE request_session_id = ?
 				  AND resource_type IN ('OBJECT', 'KEY', 'PAGE', 'RID', 'HOBT')`, migID)
-		} else if r.dialect == engine.MySQL {
+		case engine.MySQL:
 			rows, err = db.QueryContext(ctx, `
 				SELECT COALESCE(ml.OBJECT_NAME, ml.LOCK_TYPE), ml.LOCK_TYPE, ml.LOCK_STATUS = 'GRANTED'
 				FROM performance_schema.metadata_locks ml
 				JOIN performance_schema.threads t ON t.THREAD_ID = ml.THREAD_ID
 				WHERE t.PROCESSLIST_ID = ?
 				  AND ml.OBJECT_TYPE IN ('TABLE', 'TABLESPACE')`, migID)
-		} else {
+		default:
 			rows, err = db.QueryContext(ctx, `
 				SELECT COALESCE(c.relname, l.locktype), l.mode, l.granted
 				FROM pg_locks l
@@ -421,6 +422,6 @@ func (r *Runner) sampleLocks(ctx context.Context, db *sql.DB, migID int64, stop 
 			}
 			mu.Unlock()
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 }

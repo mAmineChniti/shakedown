@@ -205,7 +205,7 @@ func lexSQL(s string) []sqlTok {
 			}
 		case c == '/' && i+1 < n && s[i+1] == '*':
 			j := i + 2
-			for j+1 < n && !(s[j] == '*' && s[j+1] == '/') {
+			for j+1 < n && (s[j] != '*' || s[j+1] != '/') {
 				j++
 			}
 			if j+1 < n {
@@ -232,8 +232,8 @@ func lexSQL(s string) []sqlTok {
 		default:
 			j := i
 			for j < n && !strings.ContainsRune(" \t\n\r\f", rune(s[j])) &&
-				!(s[j] == '-' && j+1 < n && s[j+1] == '-') &&
-				!(s[j] == '/' && j+1 < n && s[j+1] == '*') {
+				(s[j] != '-' || j+1 >= n || s[j+1] != '-') &&
+				(s[j] != '/' || j+1 >= n || s[j+1] != '*') {
 				j++
 			}
 			toks = append(toks, sqlTok{s[i:j], i, j})
@@ -628,13 +628,14 @@ func (d DataSafety) typeChangeProbe(ctx context.Context, sess Session, table, co
 		// lengthExpr renders a full-length text form per dialect:
 		// bare CHAR casts truncate to char(1) on Postgres.
 		lengthExpr := fmt.Sprintf("length(%s::text)", q(d.Dialect, col))
-		if d.Dialect == engine.MySQL {
+		switch d.Dialect {
+		case engine.MySQL:
 			lengthExpr = fmt.Sprintf("CHAR_LENGTH(CAST(%s AS CHAR))", q(d.Dialect, col))
-		} else if d.Dialect == engine.SQLite {
+		case engine.SQLite:
 			lengthExpr = fmt.Sprintf("length(CAST(%s AS TEXT))", q(d.Dialect, col))
-		} else if d.Dialect == engine.MSSQL {
+		case engine.MSSQL:
 			lengthExpr = fmt.Sprintf("LEN(CAST(%s AS NVARCHAR(MAX)))", q(d.Dialect, col))
-		} else if d.Dialect == engine.Oracle {
+		case engine.Oracle:
 			lengthExpr = fmt.Sprintf("LENGTH(TO_CHAR(%s))", q(d.Dialect, col))
 		}
 		if n, err := probe(ctx, sess,

@@ -22,12 +22,12 @@ func snapshotOracle(ctx context.Context, db *sql.DB) (map[string]TableInfo, erro
 	for rows.Next() {
 		var n string
 		if err := rows.Scan(&n); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 		names = append(names, n)
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func snapshotOracle(ctx context.Context, db *sql.DB) (map[string]TableInfo, erro
 	if err != nil {
 		return nil, err
 	}
-	defer colRows.Close()
+	defer func() { _ = colRows.Close() }()
 	for colRows.Next() {
 		var t, c, ty string
 		if err := colRows.Scan(&t, &c, &ty); err != nil {
