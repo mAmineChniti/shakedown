@@ -43,12 +43,23 @@ schema. Every finding is backed by evidence collected during the run.
 
 ## Install
 
+**Prebuilt binaries** — grab the binary for your platform from
+[Releases](https://github.com/mAmineChniti/shakedown/releases)
+(Linux, macOS, Windows × amd64/arm64; `.sha256` checksums included):
+
+```bash
+chmod +x shakedown_linux_amd64
+./shakedown_linux_amd64 version
+```
+
+**From source** — requires Go 1.24+:
+
 ```bash
 go install github.com/mAmineChniti/shakedown/cmd/shakedown@latest
 ```
 
-Requires Go 1.24+ to build. Docker is required for server engines;
-SQLite and `--dsn` modes need no Docker.
+Docker is required for server engines; SQLite and `--dsn` modes need
+no Docker.
 
 ## Usage
 
