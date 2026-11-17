@@ -10,6 +10,37 @@ and reports what actually happened: locks held, table rewrites, rows
 affected, data-loss exposure, and whether the down migration restores the
 schema. Every finding is backed by evidence collected during the run.
 
+## Demo
+
+A recorded terminal session is in [`demo.cast`](demo.cast) — play it with
+[asciinema](https://asciinema.org):
+
+```bash
+asciinema play demo.cast
+```
+
+The demo rehearses three migrations against a seeded SQLite database —
+a clean add-column, a `DROP TABLE` that would lose 5,000 rows, and a
+unique index that fails on real duplicate data:
+
+```
+$ shakedown -e sqlite -b demo/baseline.sql demo/migrations
+demo/migrations/001_add_verified.sql  ok  (0s, 0 rows affected, 0 lock observations)
+demo/migrations/002_drop_logs.sql  ok  (0s, 0 rows affected, 0 lock observations)
+    [critical] logs contains 5000 rows that will be permanently lost — count(*) = 5000
+        suggestion: take a backup or verify the data is reproducible before shipping
+demo/migrations/003_unique_email.sql  FAILED: constraint failed: UNIQUE constraint failed: users.email (2067)  (0s, 0 rows affected, 0 lock observations)
+    [critical] unique index uq_users_email will fail: 1 duplicate groups exist — duplicate groups = 1
+        suggestion: deduplicate before creating the unique index
+shakedown: migration demo/migrations/003_unique_email.sql failed: constraint failed: UNIQUE constraint failed: users.email (2067)
+```
+
+Reproduce it yourself — `demo/` contains the baseline and migrations:
+
+```bash
+go run ./cmd/shakedown -e sqlite -b demo/baseline.sql demo/migrations
+```
+
 ## Supported engines
 
 | Engine | Versions | Scratch provisioning | Lock observation | Rewrite detection |

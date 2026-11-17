@@ -42,8 +42,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("shakedown", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
-	dbEngine := fs.String("engine", "postgres", "database engine: postgres|mysql|sqlite (-e)")
-	version := fs.String("version", "", "image version ignored for sqlite (-v)")
+	dbEngine := fs.String("engine", "postgres", "database engine: postgres|mysql|sqlite|mssql|oracle (-e)")
+	version := fs.String("version", "", "image version, e.g. 16, 8.4, mariadb:11.4, 2022-latest (-v)")
 	dsn := fs.String("dsn", "", "scratch database DSN (must be local unless --allow-remote-scratch) (-d)")
 	allowRemote := fs.Bool("allow-remote-scratch", false, "permit non-local scratch DSN hosts")
 	baseline := fs.String("baseline", "", "schema-only SQL dump to load before migrations (-b)")
@@ -208,8 +208,9 @@ Usage:
   shakedown [flags] <migration.sql|dir>...
 
 Flags:
-  --engine ENGINE        postgres (default) or mysql
-  --version VER          image version (pg: 16, mysql: 8.4, mariadb: 11)
+  --engine ENGINE        postgres (default), mysql, sqlite, mssql, oracle
+  --version VER          image version (pg: 16|latest, mysql: 8.4,
+                         mariadb:11.4, mssql: 2022-latest, oracle: 23-slim-faststart)
   --dsn DSN              use an existing scratch DB instead of Docker
   --allow-remote-scratch permit non-local DSN hosts (never use on prod)
   --baseline FILE        schema-only SQL dump to load first
@@ -285,7 +286,7 @@ func interactive(fs *flag.FlagSet, stderr io.Writer) []string {
 
 	fmt.Fprintln(stderr, "shakedown — migration rehearsal")
 	fmt.Fprintln(stderr)
-	eng := ask("Database engine", "postgres")
+	eng := ask("Database engine (postgres|mysql|sqlite|mssql|oracle)", "postgres")
 	ver := ask("Image version (blank = engine default)", "")
 	mig := ask("Migration file or directory", "")
 	if mig == "" {

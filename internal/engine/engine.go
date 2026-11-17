@@ -1,6 +1,7 @@
 // Package engine abstracts the scratch database that migrations are
-// rehearsed against. It ships Postgres and MySQL/MariaDB implementations;
-// the interface is kept deliberately small so more engines can be added.
+// rehearsed against. It ships implementations for Postgres, MySQL/MariaDB,
+// SQLite, SQL Server, and Oracle; the interface is kept deliberately small
+// so more engines can be added.
 package engine
 
 import (
@@ -25,12 +26,14 @@ const (
 
 // Options controls how the scratch database is obtained.
 type Options struct {
-	// Engine selects the database engine ("postgres", "mysql", or
-	// "sqlite").
+	// Engine selects the database engine ("postgres", "mysql", "sqlite",
+	// "mssql", or "oracle").
 	Engine Dialect
 
 	// Version selects the Docker image tag (e.g. "16" for postgres,
-	// "8.4" for mysql, "11" for mariadb). Ignored when DSN is set.
+	// "8.4"/"mariadb:11.4" for mysql, "2022-latest" for mssql,
+	// "23-slim-faststart" for oracle). Ignored when DSN is set or the
+	// engine is SQLite.
 	Version string
 
 	// DSN points at an existing scratch database. The host must be local

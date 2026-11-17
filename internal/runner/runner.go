@@ -109,6 +109,10 @@ func (r *Runner) Run(ctx context.Context, files []string) ([]MigrationResult, er
 	// backend-id lock filter.
 	db.SetMaxOpenConns(1)
 
+	if err := verifyServerDialect(ctx, db, r.dialect); err != nil {
+		return nil, err
+	}
+
 	samplerDB, err := r.eng.Connect(ctx)
 	if err != nil {
 		return nil, err
@@ -301,9 +305,45 @@ func execOne(ctx context.Context, db *sql.DB, stmt string) (int64, error) {
 	return n, nil
 }
 
+// verifyServerDialect confirms the connected server actually is the
+// requested engine — catches --dsn/--engine mismatches early instead of
+// failing deep inside catalog queries. Probe failures are ignored: some
+// engines restrict version views, and the catalog queries will surface
+// real errors anyway.
+func verifyServerDialect(ctx context.Context, db *sql.DB, d engine.Dialect) error {
+	var query string
+	var wants []string
+	switch d {
+	case engine.Postgres:
+		query, wants = "SELECT version()", []string{"postgresql"}
+	case engine.MySQL:
+		// @@version_comment carries the product name ("MySQL Community
+		// Server", "MariaDB Community Server"); VERSION() is bare digits.
+		query, wants = "SELECT @@version_comment", []string{"mysql", "mariadb"}
+	case engine.MSSQL:
+		query, wants = "SELECT @@VERSION", []string{"microsoft sql server"}
+	case engine.Oracle:
+		query, wants = "SELECT banner FROM v$version WHERE ROWNUM = 1", []string{"oracle"}
+	default:
+		return nil // SQLite: the file/driver pair defines the engine
+	}
+	var banner string
+	if err := db.QueryRowContext(ctx, query).Scan(&banner); err != nil {
+		return nil
+	}
+	lower := strings.ToLower(banner)
+	for _, w := range wants {
+		if strings.Contains(lower, w) {
+			return nil
+		}
+	}
+	return fmt.Errorf("server identifies as %q, not %s — check --dsn/--engine", banner, d)
+}
+
 // backendID returns the identifier the lock sampler filters on:
-// pg_backend_pid() for Postgres, CONNECTION_ID() for MySQL. SQLite has
-// no server-side lock catalog, so it returns 0 (unused).
+// pg_backend_pid() for Postgres, CONNECTION_ID() for MySQL, @@SPID for
+// SQL Server. SQLite and Oracle have no usable lock catalog, so they
+// return 0 (unused).
 func backendID(ctx context.Context, db *sql.DB, d engine.Dialect) (int64, error) {
 	var id int64
 	var q string

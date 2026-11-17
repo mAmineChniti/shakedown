@@ -1,8 +1,11 @@
 package checks
 
 import (
+	"context"
 	"reflect"
 	"testing"
+
+	"github.com/mAmineChniti/shakedown/internal/engine"
 )
 
 func TestSplitStatements(t *testing.T) {
@@ -71,5 +74,45 @@ func TestColName(t *testing.T) {
 func TestSeverityRank(t *testing.T) {
 	if Critical.Rank() <= Warning.Rank() || Warning.Rank() <= Info.Rank() {
 		t.Fatal("severity ranks not ordered")
+	}
+}
+
+func TestLexSQL(t *testing.T) {
+	texts := lexSQL(`-- leading comment
+ALTER TABLE "my tab" ADD COLUMN c int, DROP COLUMN d`)
+	var got []string
+	for _, tok := range texts {
+		got = append(got, tok.text)
+	}
+	want := []string{"ALTER", "TABLE", `"my tab"`, "ADD", "COLUMN", "c", "int,", "DROP", "COLUMN", "d"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %q want %q", got, want)
+	}
+
+	// block comments and backticks
+	texts = lexSQL("/* x */ TRUNCATE `order details` CASCADE")
+	got = got[:0]
+	for _, tok := range texts {
+		got = append(got, tok.text)
+	}
+	want = []string{"TRUNCATE", "`order details`", "CASCADE"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+// Statements that need no DB probe must dispatch without touching the
+// connection — guards against nil-DB panics in the parser paths.
+func TestAnalyzeStatementNoProbe(t *testing.T) {
+	sess := Session{Dialect: engine.Postgres}
+	for _, stmt := range []string{
+		"ALTER TABLE users ADD COLUMN age int",
+		"CREATE INDEX CONCURRENTLY idx ON users USING btree (email)",
+		"SELECT 1",
+		"ALTER TABLE ONLY public.logs DROP CONSTRAINT c",
+	} {
+		if got := (DataSafety{}).Analyze(context.Background(), sess, []string{stmt}); len(got) != 0 {
+			t.Fatalf("%q: unexpected findings %v", stmt, got)
+		}
 	}
 }

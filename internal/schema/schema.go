@@ -7,6 +7,7 @@ package schema
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/mAmineChniti/shakedown/internal/engine"
 )
@@ -34,8 +35,10 @@ func Snapshot(ctx context.Context, db *sql.DB, dialect engine.Dialect) (map[stri
 		return snapshotMSSQL(ctx, db)
 	case engine.Oracle:
 		return snapshotOracle(ctx, db)
-	default:
+	case engine.Postgres:
 		return snapshotPostgres(ctx, db)
+	default:
+		return nil, fmt.Errorf("no schema snapshot for dialect %q", dialect)
 	}
 }
 

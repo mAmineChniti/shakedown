@@ -19,10 +19,11 @@ type DataSafety struct {
 func (d DataSafety) Name() string { return "data-safety" }
 
 var (
-	reAlterTable = regexp.MustCompile(`(?i)^\s*ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(.+?)\s+`)
-	reCreateIdx  = regexp.MustCompile(`(?i)^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(\S+)\s+ON\s+(.+?)\s*(?:USING\s+\S+\s*)?\(`)
-	reDropTable  = regexp.MustCompile(`(?i)^\s*DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(.+?)(?:\s+CASCADE|\s+RESTRICT)?\s*$`)
-	reTruncate   = regexp.MustCompile(`(?i)^\s*TRUNCATE\s+(?:TABLE\s+)?(.+?)(?:\s+RESTART\s+IDENTITY|\s+C?CASCADE|\s+RESTRICT)*\s*$`)
+	reIFEXISTS   = regexp.MustCompile(`(?i)^IF\s+EXISTS\s+`)
+	reAlterType  = regexp.MustCompile(`(?i)\bTYPE\s+(.+?)(?:\s+USING\b|\s+COLLATE\b|$)`)
+	reVarcharLen = regexp.MustCompile(`(?i)^(?:var)?char(?:acter)?\s*(?:varying)?\s*\(\s*(\d+)\s*\)`)
+	reAlgorithm  = regexp.MustCompile(`(?i)ALGORITHM\s*=\s*(\w+)`)
+	reFK         = regexp.MustCompile(`(?i)FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+(\S+)\s*\(([^)]+)\)`)
 )
 
 // Analyze implements PreCheck.
@@ -35,32 +36,228 @@ func (d DataSafety) Analyze(ctx context.Context, sess Session, statements []stri
 }
 
 func (d DataSafety) analyzeStatement(ctx context.Context, sess Session, stmt string) []Finding {
-	var out []Finding
+	toks := lexSQL(stmt)
+	if len(toks) == 0 {
+		return nil
+	}
+	switch {
+	case isKw(toks[0], "DROP") && len(toks) > 1 && isKw(toks[1], "TABLE"):
+		return d.dropNames(ctx, sess, stmt, toks, 2, "CASCADE", "RESTRICT")
+	case isKw(toks[0], "TRUNCATE"):
+		i := 1
+		if len(toks) > 1 && isKw(toks[1], "TABLE") {
+			i = 2
+		}
+		return d.dropNames(ctx, sess, stmt, toks, i, "RESTART", "CASCADE", "RESTRICT")
+	case isKw(toks[0], "CREATE"):
+		return d.analyzeCreateIndexToks(ctx, sess, stmt, toks)
+	case isKw(toks[0], "ALTER") && len(toks) > 1 && isKw(toks[1], "TABLE"):
+		return d.analyzeAlterTable(ctx, sess, stmt, toks)
+	}
+	return nil
+}
 
-	if m := reDropTable.FindStringSubmatch(stmt); m != nil {
-		for _, t := range splitNameList(m[1]) {
-			out = append(out, d.dropProbe(ctx, sess, t)...)
-		}
-		return out
+// analyzeAlterTable extracts the table name token and hands the remaining
+// action text to analyzeAlterAction.
+func (d DataSafety) analyzeAlterTable(ctx context.Context, sess Session, stmt string, toks []sqlTok) []Finding {
+	i := 2
+	if i+1 < len(toks) && isKw(toks[i], "IF") && isKw(toks[i+1], "EXISTS") {
+		i += 2
 	}
-	if m := reTruncate.FindStringSubmatch(stmt); m != nil {
-		for _, t := range splitNameList(m[1]) {
-			out = append(out, d.dropProbe(ctx, sess, t)...)
-		}
-		return out
+	if i < len(toks) && isKw(toks[i], "ONLY") {
+		i++
 	}
-	if m := reCreateIdx.FindStringSubmatch(stmt); m != nil {
-		return d.analyzeCreateIndex(ctx, sess, stmt, m[1], m[2])
+	if i >= len(toks) {
+		return nil
 	}
-	if m := reAlterTable.FindStringSubmatch(stmt); m != nil {
-		table := strings.TrimSpace(m[1])
-		actions := stmt[len(m[0]):]
-		for _, action := range splitActions(actions) {
-			out = append(out, d.analyzeAlterAction(ctx, sess, table, action)...)
-		}
-		return out
+	table := toks[i].text
+	var out []Finding
+	for _, action := range splitActions(stmt[toks[i].end:]) {
+		out = append(out, d.analyzeAlterAction(ctx, sess, table, action)...)
 	}
 	return out
+}
+
+// dropNames probes row counts for the table names in a DROP TABLE or
+// TRUNCATE statement. Name tokens run until a tail keyword (CASCADE,
+// RESTRICT, RESTART) or end of statement.
+func (d DataSafety) dropNames(ctx context.Context, sess Session, stmt string, toks []sqlTok, i int, tails ...string) []Finding {
+	if i+1 < len(toks) && isKw(toks[i], "IF") && isKw(toks[i+1], "EXISTS") {
+		i += 2
+	}
+	start := -1
+	end := -1
+	for ; i < len(toks); i++ {
+		for _, t := range tails {
+			if isKw(toks[i], t) {
+				goto done
+			}
+		}
+		if start < 0 {
+			start = toks[i].start
+		}
+		end = toks[i].end
+	}
+done:
+	if start < 0 {
+		return nil
+	}
+	var out []Finding
+	for _, t := range splitNameList(stmt[start:end]) {
+		out = append(out, d.dropProbe(ctx, sess, t)...)
+	}
+	return out
+}
+
+// analyzeCreateIndexToks handles CREATE [UNIQUE] INDEX [CONCURRENTLY]
+// [IF NOT EXISTS] name ON table (cols) — extracting the index name and
+// table expression for analyzeCreateIndex.
+func (d DataSafety) analyzeCreateIndexToks(ctx context.Context, sess Session, stmt string, toks []sqlTok) []Finding {
+	i := 1
+	isUnique, hasConcurrently := false, false
+	if i < len(toks) && isKw(toks[i], "UNIQUE") {
+		isUnique = true
+		i++
+	}
+	if i >= len(toks) || !isKw(toks[i], "INDEX") {
+		return nil
+	}
+	i++
+	if i < len(toks) && isKw(toks[i], "CONCURRENTLY") {
+		hasConcurrently = true
+		i++
+	}
+	if i+2 < len(toks) && isKw(toks[i], "IF") && isKw(toks[i+1], "NOT") && isKw(toks[i+2], "EXISTS") {
+		i += 3
+	}
+	if i >= len(toks) {
+		return nil
+	}
+	idxName := toks[i].text
+	i++
+	if i >= len(toks) || !isKw(toks[i], "ON") {
+		return nil
+	}
+	i++
+	if i >= len(toks) {
+		return nil
+	}
+	// Table expression runs from here to the first '(' (the column list).
+	tableStart := toks[i].start
+	paren := strings.Index(stmt[tableStart:], "(")
+	if paren < 0 {
+		return nil
+	}
+	tableExpr := strings.TrimSpace(stmt[tableStart : tableStart+paren])
+	// Strip an optional access-method clause: ON t USING btree (cols).
+	if i := indexOfWord(tableExpr, "USING"); i >= 0 {
+		tableExpr = strings.TrimSpace(tableExpr[:i])
+	}
+
+	var out []Finding
+	if isUnique {
+		if cols := indexColumns(stmt); cols != "" {
+			dupSQL := fmt.Sprintf(
+				`SELECT count(*) FROM (SELECT 1 FROM %s GROUP BY %s HAVING count(*) > 1) d`,
+				q(d.Dialect, tableExpr), cols)
+			if n, err := probe(ctx, sess, dupSQL); err == nil && n > 0 {
+				out = append(out, finding(Critical,
+					fmt.Sprintf("unique index %s will fail: %d duplicate groups exist", idxName, n),
+					fmt.Sprintf("duplicate groups = %d", n),
+					"deduplicate before creating the unique index"))
+			}
+		}
+	}
+	if d.Dialect == engine.Postgres && !hasConcurrently {
+		out = append(out, finding(Warning,
+			fmt.Sprintf("CREATE INDEX %s takes a SHARE lock that blocks writes for the build duration", idxName),
+			"no CONCURRENTLY in statement",
+			"use CREATE INDEX CONCURRENTLY (outside a transaction block)"))
+	} else if d.Dialect == engine.MySQL {
+		out = append(out, finding(Info,
+			fmt.Sprintf("CREATE INDEX %s builds under a metadata lock that blocks writes", idxName),
+			"MySQL has no CREATE INDEX CONCURRENTLY; expect brief blocking",
+			"on large tables prefer gh-ost/pt-osc online schema change tools"))
+	}
+	return out
+}
+
+// sqlTok is a whitespace-delimited token with byte offsets into the
+// source statement. Quoted spans stay intact; comments are skipped.
+type sqlTok struct {
+	text       string
+	start, end int
+}
+
+// lexSQL tokenizes a normalized statement: whitespace-separated tokens,
+// quote-aware ('...', "...", `...`), comment-skipping (-- and /* */).
+func lexSQL(s string) []sqlTok {
+	var toks []sqlTok
+	i, n := 0, len(s)
+	for i < n {
+		c := s[i]
+		switch {
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f':
+			i++
+		case c == '-' && i+1 < n && s[i+1] == '-':
+			for i < n && s[i] != '\n' {
+				i++
+			}
+		case c == '/' && i+1 < n && s[i+1] == '*':
+			j := i + 2
+			for j+1 < n && !(s[j] == '*' && s[j+1] == '/') {
+				j++
+			}
+			if j+1 < n {
+				j += 2
+			} else {
+				j = n
+			}
+			i = j
+		case c == '\'' || c == '"' || c == '`':
+			j := i + 1
+			for j < n {
+				if s[j] == c {
+					if c == '\'' && j+1 < n && s[j+1] == '\'' {
+						j += 2
+						continue
+					}
+					j++
+					break
+				}
+				j++
+			}
+			toks = append(toks, sqlTok{s[i:j], i, j})
+			i = j
+		default:
+			j := i
+			for j < n && !strings.ContainsRune(" \t\n\r\f", rune(s[j])) &&
+				!(s[j] == '-' && j+1 < n && s[j+1] == '-') &&
+				!(s[j] == '/' && j+1 < n && s[j+1] == '*') {
+				j++
+			}
+			toks = append(toks, sqlTok{s[i:j], i, j})
+			i = j
+		}
+	}
+	return toks
+}
+
+func isKw(t sqlTok, kw string) bool { return strings.EqualFold(t.text, kw) }
+
+// indexOfWord returns the byte offset of kw as a standalone word in s,
+// or -1. Used to cut trailing clauses like USING btree from a table expr.
+func indexOfWord(s, kw string) int {
+	for i := 0; i+len(kw) <= len(s); i++ {
+		if strings.EqualFold(s[i:i+len(kw)], kw) {
+			before := i == 0 || s[i-1] == ' '
+			after := i+len(kw) == len(s) || s[i+len(kw)] == ' '
+			if before && after {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 // ---- shared helpers ----
@@ -161,38 +358,6 @@ func (d DataSafety) dropProbe(ctx context.Context, sess Session, table string) [
 
 // ---- CREATE INDEX ----
 
-func (d DataSafety) analyzeCreateIndex(ctx context.Context, sess Session, stmt, idxName, tableExpr string) []Finding {
-	var out []Finding
-	norm := strings.ToUpper(stmt)
-	isUnique := strings.Contains(norm, "UNIQUE")
-
-	if isUnique {
-		if cols := indexColumns(stmt); cols != "" {
-			dupSQL := fmt.Sprintf(
-				`SELECT count(*) FROM (SELECT 1 FROM %s GROUP BY %s HAVING count(*) > 1) d`,
-				q(d.Dialect, tableExpr), cols)
-			if n, err := probe(ctx, sess, dupSQL); err == nil && n > 0 {
-				out = append(out, finding(Critical,
-					fmt.Sprintf("unique index %s will fail: %d duplicate groups exist", idxName, n),
-					fmt.Sprintf("duplicate groups = %d", n),
-					"deduplicate before creating the unique index"))
-			}
-		}
-	}
-	if d.Dialect == engine.Postgres && !strings.Contains(norm, "CONCURRENTLY") {
-		out = append(out, finding(Warning,
-			fmt.Sprintf("CREATE INDEX %s takes a SHARE lock that blocks writes for the build duration", idxName),
-			"no CONCURRENTLY in statement",
-			"use CREATE INDEX CONCURRENTLY (outside a transaction block)"))
-	} else if d.Dialect == engine.MySQL {
-		out = append(out, finding(Info,
-			fmt.Sprintf("CREATE INDEX %s builds under a metadata lock that blocks writes", idxName),
-			"MySQL has no CREATE INDEX CONCURRENTLY; expect brief blocking",
-			"on large tables prefer gh-ost/pt-osc online schema change tools"))
-	}
-	return out
-}
-
 // indexColumns extracts the first parenthesized group from CREATE INDEX —
 // the key column list.
 func indexColumns(stmt string) string {
@@ -277,7 +442,7 @@ func colName(rest string) string {
 
 func (d DataSafety) dropColumnProbe(ctx context.Context, sess Session, table, action string) []Finding {
 	rest := strings.TrimSpace(action[len("DROP COLUMN"):])
-	rest = regexp.MustCompile(`(?i)^IF\s+EXISTS\s+`).ReplaceAllString(rest, "")
+	rest = reIFEXISTS.ReplaceAllString(rest, "")
 	col := colName(rest)
 	if col == "" {
 		return nil
@@ -324,7 +489,7 @@ func (d DataSafety) alterColumnProbe(ctx context.Context, sess Session, table, a
 	}
 
 	newType := ""
-	if m := regexp.MustCompile(`(?i)\bTYPE\s+(.+?)(?:\s+USING\b|\s+COLLATE\b|$)`).FindStringSubmatch(rest); m != nil {
+	if m := reAlterType.FindStringSubmatch(rest); m != nil {
 		newType = strings.TrimSpace(m[1])
 	}
 	if newType == "" {
@@ -404,7 +569,7 @@ func firstTypeToken(s string) string {
 // algorithmProbe reports on MySQL ALGORITHM= clauses: COPY rebuilds the
 // whole table under an exclusive lock; INPLACE/INSTANT are online-ish.
 func (d DataSafety) algorithmProbe(action string) []Finding {
-	m := regexp.MustCompile(`(?i)ALGORITHM\s*=\s*(\w+)`).FindStringSubmatch(action)
+	m := reAlgorithm.FindStringSubmatch(action)
 	if m == nil {
 		return nil
 	}
@@ -459,7 +624,7 @@ func (d DataSafety) addColumnProbe(ctx context.Context, sess Session, table, act
 
 // typeChangeProbe checks whether existing values survive a type change.
 func (d DataSafety) typeChangeProbe(ctx context.Context, sess Session, table, col, newType string) []Finding {
-	if m := regexp.MustCompile(`(?i)^(?:var)?char(?:acter)?\s*(?:varying)?\s*\(\s*(\d+)\s*\)`).FindStringSubmatch(newType); m != nil {
+	if m := reVarcharLen.FindStringSubmatch(newType); m != nil {
 		// lengthExpr renders a full-length text form per dialect:
 		// bare CHAR casts truncate to char(1) on Postgres.
 		lengthExpr := fmt.Sprintf("length(%s::text)", q(d.Dialect, col))
@@ -647,7 +812,7 @@ func (d DataSafety) addConstraintProbe(ctx context.Context, sess Session, table,
 				"fix the data or relax the constraint")}
 		}
 	case strings.Contains(up, "FOREIGN KEY"):
-		m := regexp.MustCompile(`(?i)FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+(\S+)\s*\(([^)]+)\)`).FindStringSubmatch(action)
+		m := reFK.FindStringSubmatch(action)
 		if m == nil {
 			return []Finding{finding(Info,
 				"composite or unparsed FK on "+table+" — orphan check skipped",
