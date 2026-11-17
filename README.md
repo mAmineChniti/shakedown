@@ -66,7 +66,10 @@ no Docker.
 ### Interactive
 
 Running `shakedown` with no arguments on a terminal launches a guided
-prompt for engine, version, migrations, baseline, and output format.
+wizard for the engine/version, migration path, optional baseline/data/
+stats files, and output format. Arrow keys move, enter opens a folder or
+selects a file, `o`/`→` opens folders, and tab skips an optional picker.
+Flags you already passed are used as the defaults; ctrl+c cancels.
 
 ### Command line
 

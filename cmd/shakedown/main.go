@@ -3,9 +3,9 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -14,6 +14,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/huh"
+	"golang.org/x/term"
 
 	"github.com/mAmineChniti/shakedown/internal/checks"
 	"github.com/mAmineChniti/shakedown/internal/engine"
@@ -41,6 +45,7 @@ func main() {
 func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("shakedown", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	fs.Usage = func() { fmt.Fprint(stderr, usage) }
 
 	dbEngine := fs.String("engine", "postgres", "database engine: postgres|mysql|sqlite|mssql|oracle (-e)")
 	version := fs.String("version", "", "image version, e.g. 16, 8.4, mariadb:11.4, 2022-latest (-v)")
@@ -53,16 +58,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 	minSev := fs.String("min-severity", "warning", "minimum finding severity that fails the run: info|warning|critical (-m)")
 
 	if err := fs.Parse(expandShorthands(args)); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
 		return 2
 	}
 	migArgs := fs.Args()
 	if len(migArgs) == 0 {
-		if stdinIsTTY() {
-			migArgs = interactive(fs, stderr)
-		}
-		if len(migArgs) == 0 {
+		if !stdinIsTTY() {
 			fmt.Fprint(stderr, usage)
 			return 2
+		}
+		var err error
+		migArgs, err = interactive(fs, stderr)
+		if err != nil {
+			fmt.Fprintf(stderr, "shakedown: %v\n", err)
+			return 2
+		}
+		if len(migArgs) == 0 {
+			// The user cancelled with ctrl+c — exit quietly, no usage dump.
+			return 0
 		}
 	}
 
@@ -254,52 +269,157 @@ func expandShorthands(args []string) []string {
 	return out
 }
 
-// stdinIsTTY reports whether stdin is an interactive terminal.
+// stdinIsTTY reports whether stdin is an interactive terminal. Checking
+// ModeCharDevice is not enough: /dev/null is also a character device.
 func stdinIsTTY() bool {
-	fi, err := os.Stdin.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(int(os.Stdin.Fd()))
 }
 
-// interactive prompts for the essentials when shakedown runs bare on a
-// terminal, fills in the flag values, and returns the migration paths.
-// Returns nil if the user didn't supply a migration path.
-func interactive(fs *flag.FlagSet, stderr io.Writer) []string {
-	set := func(name, val string) {
-		if f := fs.Lookup(name); f != nil && val != "" {
-			_ = f.Value.Set(val)
+// interactive runs a guided setup wizard when shakedown is invoked bare
+// on a terminal. Flags the user already passed are used as the wizard's
+// defaults. It returns the migration path, or nil if the user cancelled.
+func interactive(fs *flag.FlagSet, stderr io.Writer) ([]string, error) {
+	flagVal := func(name string) string {
+		if f := fs.Lookup(name); f != nil {
+			return f.Value.String()
 		}
-	}
-	reader := bufio.NewReader(os.Stdin)
-	ask := func(label, def string) string {
-		fmt.Fprintf(stderr, "  %s", label)
-		if def != "" {
-			fmt.Fprintf(stderr, " [%s]", def)
-		}
-		fmt.Fprint(stderr, ": ")
-		line, _ := reader.ReadString('\n')
-		line = strings.TrimSpace(line)
-		if line == "" {
-			return def
-		}
-		return line
+		return ""
 	}
 
-	fmt.Fprintln(stderr, "shakedown — migration rehearsal")
-	fmt.Fprintln(stderr)
-	eng := ask("Database engine (postgres|mysql|sqlite|mssql|oracle)", "postgres")
-	ver := ask("Image version (blank = engine default)", "")
-	mig := ask("Migration file or directory", "")
-	if mig == "" {
+	eng, ver := flagVal("engine"), flagVal("version")
+	base, data, stats := flagVal("baseline"), flagVal("data"), flagVal("stats")
+	format := flagVal("format")
+	var mig string
+
+	migrationPath := func(s string) error {
+		if strings.TrimSpace(s) == "" {
+			return fmt.Errorf("choose a migration .sql file or a directory")
+		}
+		// Validate exactly what the runner will load, so an empty
+		// directory or a down-only file fails here rather than after
+		// the scratch database has been provisioned.
+		_, err := runner.LoadMigrations([]string{s})
+		return err
+	}
+	optionalFile := func(s string) error {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return nil
+		}
+		fi, err := os.Stat(s)
+		if err != nil {
+			return err
+		}
+		if fi.IsDir() {
+			return fmt.Errorf("%s is a directory; choose a file", s)
+		}
 		return nil
 	}
-	base := ask("Baseline SQL dump (optional)", "")
-	stats := ask("Stats file for synthetic rows (optional)", "")
-	format := ask("Output format", "text")
+	statsPath := func(s string) error {
+		if err := optionalFile(s); err != nil {
+			return err
+		}
+		if strings.TrimSpace(s) == "" {
+			return nil
+		}
+		_, err := synth.LoadStats(s)
+		return err
+	}
 
-	set("engine", eng)
-	set("version", ver)
-	set("baseline", base)
-	set("stats", stats)
-	set("format", format)
-	return []string{mig}
+	// Vim-style picker keys: o/l/right descend into directories,
+	// h/left/backspace go up. Enter both opens the picker and selects
+	// the highlighted file or directory; esc closes it.
+	km := huh.NewDefaultKeyMap()
+	km.FilePicker.Open = key.NewBinding(key.WithKeys("o", "l", "right", "enter"), key.WithHelp("o/→/enter", "browse / select"))
+	km.FilePicker.Select = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select"))
+	km.FilePicker.Close = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close · h/← up"))
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Database engine").
+				Options(
+					huh.NewOption("PostgreSQL", "postgres"),
+					huh.NewOption("MySQL / MariaDB", "mysql"),
+					huh.NewOption("SQLite (no Docker)", "sqlite"),
+					huh.NewOption("SQL Server", "mssql"),
+					huh.NewOption("Oracle", "oracle"),
+				).
+				Value(&eng),
+			huh.NewInput().
+				Title("Image version").
+				Description("blank = engine default — e.g. 16, 8.4, mariadb:11.4, 2022-latest").
+				Value(&ver),
+		).Title("Target database").
+			Description("Ctrl+C cancels the wizard."),
+		huh.NewGroup(
+			huh.NewFilePicker().
+				Title("Migration file or directory").
+				Description("an up-migration .sql file, or a directory of migrations — o/→ opens folders").
+				FileAllowed(true).
+				DirAllowed(true).
+				Value(&mig).
+				Validate(migrationPath),
+		).Title("Migrations"),
+		huh.NewGroup(
+			huh.NewFilePicker().
+				Title("Baseline schema dump").
+				Description("optional — schema-only SQL of the current database — tab skips").
+				FileAllowed(true).
+				DirAllowed(false).
+				AllowedTypes([]string{".sql"}).
+				Value(&base).
+				Validate(optionalFile),
+			huh.NewFilePicker().
+				Title("Data dump").
+				Description("optional — data SQL loaded after the baseline — tab skips").
+				FileAllowed(true).
+				DirAllowed(false).
+				AllowedTypes([]string{".sql"}).
+				Value(&data).
+				Validate(optionalFile),
+			huh.NewFilePicker().
+				Title("Stats file").
+				Description("optional — 'table rows' per line for synthetic volume — tab skips").
+				FileAllowed(true).
+				DirAllowed(false).
+				Value(&stats).
+				Validate(statsPath),
+		).Title("Starting state").
+			Description("Optional files; press tab to skip one."),
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Output format").
+				Options(
+					huh.NewOption("Text (colored)", "text"),
+					huh.NewOption("JSON", "json"),
+					huh.NewOption("Markdown", "markdown"),
+				).
+				Value(&format),
+		).Title("Report").
+			Description("The rehearsal starts after this step."),
+	).
+		WithKeyMap(km).
+		WithOutput(stderr)
+
+	if err := form.Run(); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("setup wizard: %w", err)
+	}
+
+	for _, flagValue := range []struct{ name, value string }{
+		{"engine", eng},
+		{"version", ver},
+		{"baseline", base},
+		{"data", data},
+		{"stats", stats},
+		{"format", format},
+	} {
+		if err := fs.Set(flagValue.name, flagValue.value); err != nil {
+			return nil, fmt.Errorf("apply wizard value for --%s: %w", flagValue.name, err)
+		}
+	}
+	return []string{mig}, nil
 }
