@@ -12,33 +12,34 @@ schema. Every finding is backed by evidence collected during the run.
 
 ## Demo
 
-A recorded terminal session is in [`demo.cast`](demo.cast) — play it with
-[asciinema](https://asciinema.org):
+A recorded terminal session is in [`demo.cast`](demo.cast) (~50s) — play it
+with [asciinema](https://asciinema.org):
 
 ```bash
 asciinema play demo.cast
 ```
 
-The demo rehearses three migrations against a seeded SQLite database —
-a clean add-column, a `DROP TABLE` that would lose 5,000 rows, and a
-unique index that fails on real duplicate data:
+![shakedown demo](demo.gif)
 
-```
-$ shakedown -e sqlite -b demo/baseline.sql demo/migrations
-demo/migrations/001_add_verified.sql  ok  (0s, 0 rows affected, 0 lock observations)
-demo/migrations/002_drop_logs.sql  ok  (0s, 0 rows affected, 0 lock observations)
-    [critical] logs contains 5000 rows that will be permanently lost — count(*) = 5000
-        suggestion: take a backup or verify the data is reproducible before shipping
-demo/migrations/003_unique_email.sql  FAILED: constraint failed: UNIQUE constraint failed: users.email (2067)  (0s, 0 rows affected, 0 lock observations)
-    [critical] unique index uq_users_email will fail: 1 duplicate groups exist — duplicate groups = 1
-        suggestion: deduplicate before creating the unique index
-shakedown: migration demo/migrations/003_unique_email.sql failed: constraint failed: UNIQUE constraint failed: users.email (2067)
-```
+It tours the main features end to end:
 
-Reproduce it yourself — `demo/` contains the baseline and migrations:
+1. **SQLite rehearsal** — three migrations against a seeded database: a
+   clean add-column, a `DROP TABLE` flagged critical for losing 5,000
+   rows, and a unique index that fails on real duplicate data.
+2. **PostgreSQL rehearsal** — `--stats` synthetic data (50k users / 200k
+   orders), observed lock modes (`ShareLock`, `AccessExclusiveLock`),
+   `relfilenode` table-rewrite detection, row-count drift, and a verified
+   down migration.
+3. **`-f json`** — the same run as machine-readable output for CI.
+4. **`-f markdown`** — a PR-comment-friendly report.
+
+Reproduce any part yourself — `demo/` contains the baselines, migrations,
+and stats file:
 
 ```bash
 go run ./cmd/shakedown -e sqlite -b demo/baseline.sql demo/migrations
+go run ./cmd/shakedown -e postgres -v 16 -b testdata/baseline_postgres.sql -s demo/pg_stats.txt demo/pg
+go run ./cmd/shakedown -e sqlite -b demo/baseline.sql -f json demo/migrations/002_drop_logs.sql
 ```
 
 ## Supported engines
