@@ -34,6 +34,8 @@ github.com/charmbracelet/lipgloss v1.1.0 h1:vYXsiLHVkK7fp74RkV7b2kq9+zDLoEU4MZoF
 github.com/charmbracelet/lipgloss v1.1.0/go.mod h1:/6Q8FR2o+kj8rz4Dq0zQc3vYf7X+B0binUUBwA0aL30=
 github.com/charmbracelet/x/ansi v0.11.9 h1:kIrqLBxtTVbLyyHO2Evoi93EjQo1mylWmpNEsfPxXAM=
 github.com/charmbracelet/x/ansi v0.11.9/go.mod h1:DG/hpOnaI2QJ/KMMqLL2h0KVhluuJLazf8973P+Vy5w=
+github.com/charmbracelet/x/ansi v0.11.10 h1:GjcX3+rAk+8wDX/jY0XwrZstxkjRcLkYU3TvwzZWiRA=
+github.com/charmbracelet/x/ansi v0.11.10/go.mod h1:DG/hpOnaI2QJ/KMMqLL2h0KVhluuJLazf8973P+Vy5w=
 github.com/charmbracelet/x/cellbuf v0.0.15 h1:ur3pZy0o6z/R7EylET877CBxaiE1Sp1GMxoFPAIztPI=
 github.com/charmbracelet/x/cellbuf v0.0.15/go.mod h1:J1YVbR7MUuEGIFPCaaZ96KDl5NoS0DAWkskup+mOY+Q=
 github.com/charmbracelet/x/conpty v0.1.0 h1:4zc8KaIcbiL4mghEON8D72agYtSeIgq8FSThSPQIb+U=
@@ -95,6 +97,8 @@ github.com/mattn/go-runewidth v0.0.31 h1:1oCV4ReTlosDBc6rYRw5cL8S/4y8iv5oRl4SJ5I
 github.com/mattn/go-runewidth v0.0.31/go.mod h1:3qAiGCV4Koz/yuveO58qUefmUTRm8r0IGEXZ9jeHp/8=
 github.com/microsoft/go-mssqldb v1.11.2 h1:FCgeBIK8um2+X4tbun6Q71N1KsfyCDPKY41e1yGVjSE=
 github.com/microsoft/go-mssqldb v1.11.2/go.mod h1:CYgwG5AMXFojbjTg+GNP5G/y6uz1BhTyZaPqQWzkGnQ=
+github.com/microsoft/go-mssqldb v1.12.0 h1:Jwg/8jz2MKlFOYf4Oj7wMOQuTpCLrP4PIx0aINasMfw=
+github.com/microsoft/go-mssqldb v1.12.0/go.mod h1:iYsISdcqI4Tf8x/JwwkHfBu5pxtSD6lSJB8tCrOoo6E=
 github.com/mitchellh/hashstructure/v2 v2.0.2 h1:vGKWl0YJqUNxE8d+h8f6NJLcCJrgbhC4NcD46KavDd4=
 github.com/mitchellh/hashstructure/v2 v2.0.2/go.mod h1:MG3aRVU/N29oo/V/IhBX8GR/zz4kQkprJgF2EVszyDE=
 github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 h1:ZK8zHtRHOkbHy6Mmr5D264iyp3TiX5OmNcI5cIARiQI=
@@ -146,6 +150,7 @@ gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8
 gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 modernc.org/cc/v4 v4.34.0 h1:ooKvVkbVJApIi1dVGl9R0cxQz+UKixXd+zjUH6l8af0=
 modernc.org/cc/v4 v4.34.0/go.mod h1:OnovgIhbbMXMu1aISnJ0wvVD1KnW+cAUJkIrAWh+kVI=
+modernc.org/cc/v4 v4.34.1 h1:evJUh7aOSnMThs05nWm7utdK30y4zGMSpyWX+oHfoiY=
 modernc.org/ccgo/v4 v4.39.2 h1:ro93ub4tOUrUzeI5tAuLpdaM9107cX8bVjKkXtSPqZ0=
 modernc.org/ccgo/v4 v4.39.2/go.mod h1:/0Re1N2uIR+YRP3B57BDD2XW+zUAnxqlT5GZfSP+vBE=
 modernc.org/fileutil v1.4.0 h1:j6ZzNTftVS054gi281TyLjHPp6CPHr2KCxEXjEbD6SM=
@@ -158,6 +163,8 @@ modernc.org/goabi0 v0.2.1 h1:3pes1FdZWxqXYzQzhqx9rUrcCWpAc5BqHSBNFaCNqDU=
 modernc.org/goabi0 v0.2.1/go.mod h1:CEFRnnJhKvWT1c1JTI3Avm+tgOWbkOu5oPA8eH8LnMI=
 modernc.org/libc v1.81.2 h1:pq7PQKJphxVWivpqqIzl5v8mQErIQy/RGO2DyxFjkvo=
 modernc.org/libc v1.81.2/go.mod h1:RD9VtbGtyV+/I4Q14lQy8CcMu06DpX2d6V1KwlmZv9c=
+modernc.org/libc v1.82.2 h1:K3TUCixVZY66COpG2pT9P6LFWEGDxpGgdzD1Gfev+fU=
+modernc.org/libc v1.82.2/go.mod h1:WBaPsU0/fkgMv+ZmiCCad2I+uDGYyTc49Mln3jFh4zk=
 modernc.org/mathutil v1.7.1 h1:GCZVGXdaN8gTqB1Mf/usp1Y/hSqgI2vAGGP4jZMCxOU=
 modernc.org/mathutil v1.7.1/go.mod h1:4p5IwJITfppl0G4sUEDtCr4DthTaT47/N3aT6MhfgJg=
 modernc.org/memory v1.13.0 h1:w9OBwQd9VNvf8vA+KRBf+Es0TFCGcQsXvRiOVpbRfAY=
