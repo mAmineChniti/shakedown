@@ -52,6 +52,12 @@ chmod +x shakedown_linux_amd64
 ./shakedown_linux_amd64 version
 ```
 
+**Arch Linux (AUR)** — via `yay` (or any AUR helper):
+
+```bash
+yay -Syu shakedown-cli
+```
+
 **From source** — requires Go 1.24+:
 
 ```bash
