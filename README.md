@@ -74,6 +74,12 @@ go install github.com/mAmineChniti/shakedown/cmd/shakedown@latest
 Docker is required for server engines; SQLite and `--dsn` modes need
 no Docker.
 
+**Cleanup** — remove leftover scratch containers after a crash or kill:
+
+```bash
+shakedown cleanup
+```
+
 ## Usage
 
 ### Interactive

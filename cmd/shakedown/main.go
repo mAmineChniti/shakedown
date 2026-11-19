@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -38,6 +39,9 @@ func main() {
 	if len(os.Args) == 2 && (os.Args[1] == "--version" || os.Args[1] == "-version" || os.Args[1] == "version") {
 		fmt.Println("shakedown", Version)
 		return
+	}
+	if len(os.Args) == 2 && (os.Args[1] == "cleanup" || os.Args[1] == "--cleanup") {
+		os.Exit(cleanupDocker(os.Stdout, os.Stderr))
 	}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -422,4 +426,26 @@ func interactive(fs *flag.FlagSet, stderr io.Writer) ([]string, error) {
 		}
 	}
 	return []string{mig}, nil
+}
+
+// cleanupDocker removes any leftover shakedown-* scratch containers. Useful
+// after a crash or kill that bypassed normal teardown.
+func cleanupDocker(stdout, stderr io.Writer) int {
+	out, err := exec.Command("docker", "ps", "-aq", "--filter", "name=shakedown-").Output()
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "shakedown: docker: %v\n", err)
+		return 2
+	}
+	ids := strings.Fields(string(out))
+	if len(ids) == 0 {
+		_, _ = fmt.Fprintln(stdout, "no leftover shakedown containers")
+		return 0
+	}
+	args := append([]string{"rm", "-f"}, ids...)
+	if o, err := exec.Command("docker", args...).CombinedOutput(); err != nil {
+		_, _ = fmt.Fprintf(stderr, "shakedown: docker rm: %v\n%s", err, o)
+		return 2
+	}
+	_, _ = fmt.Fprintf(stdout, "removed %d leftover shakedown container(s)\n", len(ids))
+	return 0
 }

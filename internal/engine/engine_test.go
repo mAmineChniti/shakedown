@@ -15,7 +15,9 @@ func TestValidateDSNHost(t *testing.T) {
 		{"postgres://u:p@db.internal:5432/db", false, true},
 		{"postgres://u:p@10.0.0.5:5432/db", false, true},
 		{"postgres://u:p@db.internal:5432/db", true, false},
-		{"postgres://u:p@prod.example.com/db", true, false}, // allowed but caller's risk
+		{"u:p@tcp(127.0.0.1:3306)/db", false, false},
+		{"u:p@tcp(db.internal:3306)/db", false, true},
+		{"u:p@tcp(db.internal:3306)/db", true, false},
 	}
 	for _, tc := range cases {
 		err := ValidateDSNHost(tc.dsn, tc.allow)
