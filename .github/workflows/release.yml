@@ -45,8 +45,33 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Build .deb packages
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ver="${VERSION#v}"
+          for arch in amd64 arm64; do
+            bin="dist/shakedown_linux_${arch}"
+            pkg="dist/shakedown_${ver}_${arch}.deb"
+            rm -rf "deb-${arch}"
+            mkdir -p "deb-${arch}/usr/bin" "deb-${arch}/DEBIAN"
+            install -m 0755 "${bin}" "deb-${arch}/usr/bin/shakedown"
+            cat > "deb-${arch}/DEBIAN/control" <<EOF
+            Package: shakedown
+            Version: ${ver}
+            Section: utils
+            Priority: optional
+            Architecture: ${arch}
+            Maintainer: mAmineChniti <amine@example.com>
+            Description: Migration rehearsal for databases
+             shakedown executes your migrations against a disposable database and
+             reports locks, rewrites, data-safety exposure, and rollback drift.
+            EOF
+            dpkg-deb --build --root-owner-group "deb-${arch}" "${pkg}"
+          done
       - name: Checksums
-        run: cd dist && sha256sum shakedown_* > checksums.txt
+        run: cd dist && sha256sum shakedown_linux_* shakedown_*.deb > checksums.txt
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

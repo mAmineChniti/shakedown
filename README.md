@@ -52,6 +52,13 @@ chmod +x shakedown_linux_amd64
 ./shakedown_linux_amd64 version
 ```
 
+**Debian/Ubuntu** — download the `.deb` for your architecture from
+[Releases](https://github.com/mAmineChniti/shakedown/releases) and install:
+
+```bash
+sudo dpkg -i shakedown_0.1.2_amd64.deb
+```
+
 **Arch Linux (AUR)** — via `yay` (or any AUR helper):
 
 ```bash
