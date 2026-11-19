@@ -172,7 +172,6 @@ is respected). `--format markdown` produces a PR-ready report.
 - Multi-statement files report summed row counts.
 - MySQL has no `relfilenode` equivalent; rewrite risk is inferred from
   `ALGORITHM` clauses. SQLite and Oracle have no sampled lock source.
-- Oracle does not yet support `--stats` synthetic data.
 
 ## Development
 

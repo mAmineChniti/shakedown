@@ -50,9 +50,6 @@ func LoadStats(path string) (map[string]int64, error) {
 // processed in name order; stats authors must respect foreign keys
 // (parent tables need enough rows for child references).
 func Generate(ctx context.Context, db *sql.DB, dialect engine.Dialect, stats map[string]int64) error {
-	if dialect == engine.Oracle {
-		return fmt.Errorf("synthetic data generation is not yet supported for oracle")
-	}
 	names := make([]string, 0, len(stats))
 	for t := range stats {
 		names = append(names, t)
@@ -91,6 +88,13 @@ func generateTable(ctx context.Context, db *sql.DB, d engine.Dialect, table stri
 	case engine.SQLite:
 		colQuery = `SELECT name, type, COALESCE(dflt_value, ''), '', CAST(pk AS TEXT)
 			FROM pragma_table_info('` + strings.ReplaceAll(table, "'", "''") + `')`
+	case engine.Oracle:
+		colQuery = `
+			SELECT column_name, data_type, COALESCE(TO_CHAR(data_default), ''),
+			       CASE WHEN identity_column = 'YES' THEN 'YES' ELSE '' END, ''
+			FROM user_tab_columns
+			WHERE table_name = '` + strings.ReplaceAll(strings.ToUpper(table), "'", "''") + `'
+			ORDER BY column_id`
 	case engine.MSSQL:
 		colQuery = `
 			SELECT c.name, ty.name, '',
@@ -158,10 +162,10 @@ func generateTable(ctx context.Context, db *sql.DB, d engine.Dialect, table stri
 		sqlText = fmt.Sprintf(
 			"WITH RECURSIVE seq(g) AS (SELECT 1 UNION ALL SELECT g+1 FROM seq WHERE g < %d) INSERT INTO %s (%s) SELECT %s FROM seq",
 			rows+1, qi(table), strings.Join(names, ", "), strings.Join(exprs, ", "))
-	case engine.MSSQL:
+	case engine.Oracle:
 		sqlText = fmt.Sprintf(
-			";WITH seq AS (SELECT 1 g UNION ALL SELECT g+1 FROM seq WHERE g <= %d) INSERT INTO %s (%s) SELECT %s FROM seq OPTION (MAXRECURSION 0)",
-			rows, qi(table), strings.Join(names, ", "), strings.Join(exprs, ", "))
+			"INSERT INTO %s (%s) SELECT %s FROM (SELECT LEVEL AS g FROM dual CONNECT BY LEVEL <= %d)",
+			qi(table), strings.Join(names, ", "), strings.Join(exprs, ", "), rows)
 	default:
 		sqlText = fmt.Sprintf(
 			"INSERT INTO %s (%s) SELECT %s FROM generate_series(1, %d) g",
@@ -189,6 +193,9 @@ func valueExpr(d engine.Dialect, name, typ string) string {
 		if d == engine.MSSQL {
 			return "GETDATE()"
 		}
+		if d == engine.Oracle {
+			return "SYSDATE"
+		}
 		return "NOW()"
 	case strings.Contains(l, "json"):
 		if d == engine.SQLite {
@@ -200,6 +207,9 @@ func valueExpr(d engine.Dialect, name, typ string) string {
 		if d == engine.MySQL {
 			return "JSON_OBJECT('id', g, 'k', 'v')"
 		}
+		if d == engine.Oracle {
+			return "'{}'"
+		}
 		return "jsonb_build_object('id', g, 'k', 'v')"
 	case strings.Contains(l, "uuid"):
 		if d == engine.SQLite {
@@ -210,6 +220,9 @@ func valueExpr(d engine.Dialect, name, typ string) string {
 		}
 		if d == engine.MySQL {
 			return "UUID()"
+		}
+		if d == engine.Oracle {
+			return "SYS_GUID()"
 		}
 		return "gen_random_uuid()"
 	default:
