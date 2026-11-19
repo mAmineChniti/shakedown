@@ -53,6 +53,9 @@ func New(ctx context.Context, opts engine.Options) (*Engine, error) {
 	if version == "" {
 		version = defaultVersion
 	}
+	if err := validVersion(version); err != nil {
+		return nil, err
+	}
 	image := mysqlImage(version)
 
 	if _, err := exec.LookPath("docker"); err != nil {
@@ -72,9 +75,9 @@ func New(ctx context.Context, opts engine.Options) (*Engine, error) {
 		"-e", "MYSQL_DATABASE=" + dbName,
 		// performance_schema is on by default in MySQL 8 / MariaDB 10.5+;
 		// make sure it's explicit so lock sampling works.
-		"-e", "--performance-schema=ON",
 		"-p", "127.0.0.1::3306",
 		image,
+		"--performance-schema=ON",
 	}
 
 	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
@@ -93,7 +96,11 @@ func New(ctx context.Context, opts engine.Options) (*Engine, error) {
 	}
 	e.dsn = fmt.Sprintf("%s:%s@tcp(127.0.0.1:%s)/%s?parseTime=true", user, password, addr, dbName)
 
-	return e, e.waitReady(ctx)
+	if err := e.waitReady(ctx); err != nil {
+		_ = e.Teardown(ctx)
+		return nil, err
+	}
+	return e, nil
 }
 
 // mysqlImage maps a version string to a Docker image.
@@ -172,6 +179,15 @@ func (e *Engine) Teardown(ctx context.Context) error {
 	out, err := exec.CommandContext(ctx, "docker", "rm", "-f", name).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker rm -f %s: %w\n%s", name, err, out)
+	}
+	return nil
+}
+
+func validVersion(v string) error {
+	for _, r := range v {
+		if !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.:-", r) {
+			return fmt.Errorf("invalid MySQL version %q", v)
+		}
 	}
 	return nil
 }

@@ -51,6 +51,9 @@ func New(ctx context.Context, opts engine.Options) (*Engine, error) {
 	if version == "" {
 		version = defaultVersion
 	}
+	if err := validVersion(version); err != nil {
+		return nil, err
+	}
 	image := "gvenzl/oracle-free:" + version
 
 	if _, err := exec.LookPath("docker"); err != nil {
@@ -86,12 +89,14 @@ func New(ctx context.Context, opts engine.Options) (*Engine, error) {
 	e.dsn = fmt.Sprintf("oracle://system:%s@127.0.0.1:%s/%s", password, addr, service)
 
 	if err := e.waitReady(ctx); err != nil {
+		_ = e.Teardown(ctx)
 		return nil, err
 	}
 	// Connect as a dedicated scratch user so user_tables only contains
 	// rehearsal tables (SYSTEM sees Oracle-internal scheduler/mview
 	// objects that can't be dropped inside a PDB).
 	if err := e.setupUser(ctx); err != nil {
+		_ = e.Teardown(ctx)
 		return nil, err
 	}
 	e.dsn = fmt.Sprintf("oracle://%s:%s@127.0.0.1:%s/%s", scratchUser, scratchPass, addr, service)
@@ -172,6 +177,16 @@ func (e *Engine) Teardown(ctx context.Context) error {
 	out, err := exec.CommandContext(ctx, "docker", "rm", "-f", name).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker rm -f %s: %w\n%s", name, err, out)
+	}
+	return nil
+}
+
+
+func validVersion(v string) error {
+	for _, r := range v {
+		if !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.:-", r) {
+			return fmt.Errorf("invalid Oracle version %q", v)
+		}
 	}
 	return nil
 }

@@ -86,7 +86,7 @@ func generateTable(ctx context.Context, db *sql.DB, d engine.Dialect, table stri
 			       CASE WHEN extra LIKE '%auto_increment%' THEN 'YES' ELSE '' END,
 			       COALESCE(extra, '')
 			FROM information_schema.columns
-			WHERE table_schema = DATABASE() AND table_name = '` + strings.ReplaceAll(table, "`", "``") + `'
+			WHERE table_schema = DATABASE() AND table_name = '` + strings.ReplaceAll(table, "'", "''") + `'
 			ORDER BY ordinal_position`
 	case engine.SQLite:
 		colQuery = `SELECT name, type, COALESCE(dflt_value, ''), '', CAST(pk AS TEXT)
@@ -99,14 +99,14 @@ func generateTable(ctx context.Context, db *sql.DB, d engine.Dialect, table stri
 			JOIN sys.tables t ON t.object_id = c.object_id
 			JOIN sys.schemas s ON s.schema_id = t.schema_id
 			JOIN sys.types ty ON ty.user_type_id = c.user_type_id
-			WHERE t.is_ms_shipped = 0 AND s.name = 'dbo' AND t.name = '` +
+			WHERE t.is_ms_shipped = 0 AND s.name = SCHEMA_NAME() AND t.name = '` +
 			strings.ReplaceAll(table, "'", "''") + `'
 			ORDER BY c.column_id`
 	default:
 		colQuery = `
 			SELECT column_name, data_type, COALESCE(column_default, ''), is_identity, ''
 			FROM information_schema.columns
-			WHERE table_schema = 'public' AND table_name = '` + strings.ReplaceAll(table, "`", "``") + `'
+			WHERE table_schema = current_schema() AND table_name = '` + strings.ReplaceAll(table, "'", "''") + `'
 			ORDER BY ordinal_position`
 	}
 	rowsQ, err := db.QueryContext(ctx, colQuery)
@@ -152,7 +152,7 @@ func generateTable(ctx context.Context, db *sql.DB, d engine.Dialect, table stri
 	switch d {
 	case engine.MySQL:
 		sqlText = fmt.Sprintf(
-			"INSERT INTO %s (%s) SELECT %s FROM (SELECT @row := @row + 1 AS g FROM information_schema.tables, (SELECT @row := 0) r LIMIT %d) nums",
+			"INSERT INTO %s (%s) SELECT %s FROM (WITH RECURSIVE seq(g) AS (SELECT 1 UNION ALL SELECT g+1 FROM seq WHERE g < %d) SELECT g FROM seq) nums",
 			qi(table), strings.Join(names, ", "), strings.Join(exprs, ", "), rows)
 	case engine.SQLite:
 		sqlText = fmt.Sprintf(
@@ -208,7 +208,10 @@ func valueExpr(d engine.Dialect, name, typ string) string {
 		if d == engine.MSSQL {
 			return "NEWID()"
 		}
-		return "UUID()"
+		if d == engine.MySQL {
+			return "UUID()"
+		}
+		return "gen_random_uuid()"
 	default:
 		lit := strings.ReplaceAll(name, "'", "''")
 		if d == engine.MySQL {

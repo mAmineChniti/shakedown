@@ -91,7 +91,11 @@ func New(ctx context.Context, opts engine.Options) (*Engine, error) {
 	}
 	e.dsn = fmt.Sprintf("postgres://postgres:%s@127.0.0.1:%s/%s?sslmode=disable", password, addr, dbName)
 
-	return e, e.waitReady(ctx)
+	if err := e.waitReady(ctx); err != nil {
+		_ = e.Teardown(ctx)
+		return nil, err
+	}
+	return e, nil
 }
 
 func validVersion(v string) error {

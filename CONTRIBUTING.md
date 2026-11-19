@@ -5,7 +5,7 @@ evidence-based answer. This guide covers setup, testing, and conventions.
 
 ## Setup
 
-Requirements: **Go 1.24+** and **Docker** (for integration tests and the
+Requirements: **Go 1.27+** and **Docker** (for integration tests and the
 default scratch-database engine).
 
 ```bash

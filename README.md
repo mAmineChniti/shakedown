@@ -1,7 +1,7 @@
 # shakedown
 
 [![CI](https://github.com/mAmineChniti/shakedown/actions/workflows/ci.yml/badge.svg)](https://github.com/mAmineChniti/shakedown/actions/workflows/ci.yml)
-[![Go](https://img.shields.io/badge/go-1.24+-00ADD8?logo=go)](https://go.dev)
+[![Go](https://img.shields.io/badge/go-1.27+-00ADD8?logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Migration rehearsal for databases.** shakedown executes your migrations
@@ -65,7 +65,7 @@ sudo dpkg -i shakedown_0.1.2_amd64.deb
 yay -Syu shakedown-cli
 ```
 
-**From source** — requires Go 1.24+:
+**From source** — requires Go 1.27+:
 
 ```bash
 go install github.com/mAmineChniti/shakedown/cmd/shakedown@latest

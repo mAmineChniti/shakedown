@@ -59,11 +59,7 @@ type Engine interface {
 
 // ValidateDSNHost refuses non-local DSN hosts unless explicitly allowed.
 func ValidateDSNHost(dsn string, allowRemote bool) error {
-	u, err := url.Parse(dsn)
-	if err != nil {
-		return fmt.Errorf("parse DSN: %w", err)
-	}
-	host := u.Hostname()
+	host := dsnHost(dsn)
 	if host == "" {
 		return nil // unix socket or keyword DSN without host
 	}
@@ -73,6 +69,25 @@ func ValidateDSNHost(dsn string, allowRemote bool) error {
 		return fmt.Errorf("refusing non-local scratch DSN host %q; pass --allow-remote-scratch to override", host)
 	}
 	return nil
+}
+
+// dsnHost extracts the host from either a URL-style DSN or a MySQL
+// go-sql-driver DSN (user:pass@tcp(host:port)/db).
+func dsnHost(dsn string) string {
+	if u, err := url.Parse(dsn); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	if i := strings.Index(dsn, "tcp("); i >= 0 {
+		rest := dsn[i+4:]
+		if j := strings.Index(rest, ")"); j >= 0 {
+			h := rest[:j]
+			if k := strings.LastIndex(h, ":"); k >= 0 {
+				h = h[:k]
+			}
+			return strings.Trim(h, "[]")
+		}
+	}
+	return ""
 }
 
 // QuoteIdent quotes an identifier for the dialect. Only used for names we

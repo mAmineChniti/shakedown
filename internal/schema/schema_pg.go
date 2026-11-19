@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // snapshotPostgres reads pg_catalog for all ordinary tables.
@@ -133,4 +134,4 @@ func snapshotPostgres(ctx context.Context, db *sql.DB) (map[string]TableInfo, er
 	return out, nil
 }
 
-func quoteIdent(s string) string { return `"` + s + `"` }
+func quoteIdent(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) + `"` }

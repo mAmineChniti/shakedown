@@ -87,14 +87,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	eng, err := newEngine(*dbEngine, *version, *dsn, *allowRemote)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	eng, err := newEngine(ctx, *dbEngine, *version, *dsn, *allowRemote)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "shakedown: %v\n", err)
 		return 2
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	if err = engSetup(ctx, eng, *baseline, *dataDump, *statsFile, stderr); err != nil {
 		return 2
@@ -131,7 +131,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func newEngine(name, version, dsn string, allowRemote bool) (engine.Engine, error) {
+func newEngine(ctx context.Context, name, version, dsn string, allowRemote bool) (engine.Engine, error) {
 	opts := engine.Options{
 		Version:            version,
 		DSN:                dsn,
@@ -140,19 +140,19 @@ func newEngine(name, version, dsn string, allowRemote bool) (engine.Engine, erro
 	switch engine.Dialect(name) {
 	case engine.Postgres:
 		opts.Engine = engine.Postgres
-		return postgres.New(context.Background(), opts)
+		return postgres.New(ctx, opts)
 	case engine.MySQL:
 		opts.Engine = engine.MySQL
-		return mysql.New(context.Background(), opts)
+		return mysql.New(ctx, opts)
 	case engine.SQLite:
 		opts.Engine = engine.SQLite
-		return sqlite.New(context.Background(), opts)
+		return sqlite.New(ctx, opts)
 	case engine.MSSQL:
 		opts.Engine = engine.MSSQL
-		return mssql.New(context.Background(), opts)
+		return mssql.New(ctx, opts)
 	case engine.Oracle:
 		opts.Engine = engine.Oracle
-		return oracle.New(context.Background(), opts)
+		return oracle.New(ctx, opts)
 	default:
 		return nil, fmt.Errorf("unknown engine %q (supported: postgres, mysql, sqlite, mssql, oracle)", name)
 	}

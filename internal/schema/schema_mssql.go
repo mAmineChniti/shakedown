@@ -149,6 +149,6 @@ func snapshotMSSQL(ctx context.Context, db *sql.DB) (map[string]TableInfo, error
 	return out, nil
 }
 
-func qbr(s string) string { return "[" + s + "]" }
+func qbr(s string) string { return "[" + strings.ReplaceAll(s, "]", "]]") + "]" }
 
 var _ = strings.TrimSpace // keep strings import if unused later

@@ -5,10 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strings"
 )
 
-// snapshotOracle reads ALL_TABLES/ALL_TAB_COLUMNS for the connected user.
-// Indexes/constraints are not diffed for Oracle v1 (documented).
+// snapshotOracle reads USER_TABLES/USER_TAB_COLUMNS and indexes/constraints.
 func snapshotOracle(ctx context.Context, db *sql.DB) (map[string]TableInfo, error) {
 	out := map[string]TableInfo{}
 
@@ -65,6 +65,50 @@ func snapshotOracle(ctx context.Context, db *sql.DB) (map[string]TableInfo, erro
 		return nil, err
 	}
 
+	// Indexes
+	idxRows, err := db.QueryContext(ctx, `
+		SELECT index_name, table_name, index_type
+		FROM user_indexes
+		WHERE table_name NOT LIKE '%$%'`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = idxRows.Close() }()
+	for idxRows.Next() {
+		var name, table, typ string
+		if err := idxRows.Scan(&name, &table, &typ); err != nil {
+			return nil, err
+		}
+		if ti, ok := infos[table]; ok {
+			ti.Indexes[name] = typ
+		}
+	}
+	if err := idxRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Constraints
+	conRows, err := db.QueryContext(ctx, `
+		SELECT constraint_name, table_name, constraint_type
+		FROM user_constraints
+		WHERE table_name NOT LIKE '%$%'`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = conRows.Close() }()
+	for conRows.Next() {
+		var name, table, typ string
+		if err := conRows.Scan(&name, &table, &typ); err != nil {
+			return nil, err
+		}
+		if ti, ok := infos[table]; ok {
+			ti.Constraints[name] = typ
+		}
+	}
+	if err := conRows.Err(); err != nil {
+		return nil, err
+	}
+
 	sort.Strings(names)
 	for _, n := range names {
 		ti := infos[n]
@@ -79,4 +123,4 @@ func snapshotOracle(ctx context.Context, db *sql.DB) (map[string]TableInfo, erro
 	return out, nil
 }
 
-func qora(s string) string { return `"` + s + `"` }
+func qora(s string) string { return `"` + strings.ToUpper(strings.ReplaceAll(s, `"`, `""`)) + `"` }

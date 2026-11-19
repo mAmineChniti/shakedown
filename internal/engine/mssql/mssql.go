@@ -50,6 +50,9 @@ func New(ctx context.Context, opts engine.Options) (*Engine, error) {
 	if version == "" {
 		version = defaultVersion
 	}
+	if err := validVersion(version); err != nil {
+		return nil, err
+	}
 	image := "mcr.microsoft.com/mssql/server:" + version
 
 	if _, err := exec.LookPath("docker"); err != nil {
@@ -85,7 +88,11 @@ func New(ctx context.Context, opts engine.Options) (*Engine, error) {
 	}
 	e.dsn = fmt.Sprintf("sqlserver://sa:%s@127.0.0.1:%s?database=master&encrypt=disable", saPassword, addr)
 
-	return e, e.waitReady(ctx)
+	if err := e.waitReady(ctx); err != nil {
+		_ = e.Teardown(ctx)
+		return nil, err
+	}
+	return e, nil
 }
 
 // waitReady polls until SQL Server accepts connections. First boot runs
@@ -138,6 +145,16 @@ func (e *Engine) Teardown(ctx context.Context) error {
 	out, err := exec.CommandContext(ctx, "docker", "rm", "-f", name).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker rm -f %s: %w\n%s", name, err, out)
+	}
+	return nil
+}
+
+
+func validVersion(v string) error {
+	for _, r := range v {
+		if !strings.ContainsRune("0123456789.-", r) {
+			return fmt.Errorf("invalid MSSQL version %q", v)
+		}
 	}
 	return nil
 }

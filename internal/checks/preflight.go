@@ -329,13 +329,22 @@ func finding(sev Severity, msg, evidence, suggestion string) Finding {
 	return Finding{Check: "data-safety", Severity: sev, Message: msg, Evidence: evidence, Suggestion: suggestion}
 }
 
-// q quotes a possibly-qualified name: schema.table stays verbatim; bare
-// identifiers get dialect quoting.
+// q quotes a possibly-qualified name: schema.table stays qualified; every
+// identifier part is dialect-quoted so embedded delimiters cannot leak.
 func q(d engine.Dialect, name string) string {
-	if strings.ContainsAny(name, ".\"`") {
-		return name
+	parts := strings.Split(name, ".")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		p = strings.Trim(p, `"`)
+		p = strings.Trim(p, "`")
+		p = strings.Trim(p, "[]")
+		if p == "" {
+			return name
+		}
+		out = append(out, engine.QuoteIdent(d, p))
 	}
-	return engine.QuoteIdent(d, name)
+	return strings.Join(out, ".")
 }
 
 // ---- DROP / TRUNCATE ----

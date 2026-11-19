@@ -60,7 +60,7 @@ func (RowCountCheck) Analyze(_ context.Context, _ Session, before, after map[str
 	}
 	// New tables have no "before" — report them too.
 	for key, a := range after {
-		if _, ok := before[key]; !ok {
+		if _, ok := before[key]; !ok && a.RowCount > 0 {
 			out = append(out, Finding{
 				Check:    "row-counts",
 				Severity: Info,

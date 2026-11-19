@@ -46,7 +46,7 @@ runs:
       env:
         SHAKEDOWN_ARGS: ${{ inputs.migrations }}
       run: |
-        args=(--pg-version "${{ inputs.pg-version }}" --format "${{ inputs.format }}" \
+        args=(--engine postgres --version "${{ inputs.pg-version }}" --format "${{ inputs.format }}" \
               --min-severity "${{ inputs.min-severity }}")
         [ -n "${{ inputs.baseline }}" ] && args+=(--baseline "${{ inputs.baseline }}")
         [ -n "${{ inputs.data }}" ] && args+=(--data "${{ inputs.data }}")

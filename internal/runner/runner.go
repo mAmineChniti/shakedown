@@ -72,14 +72,20 @@ func LoadMigrations(paths []string) ([]string, error) {
 			}
 			continue
 		}
-		entries, err := os.ReadDir(p)
+		err = filepath.WalkDir(p, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if isUpMigration(d.Name()) {
+				files = append(files, path)
+			}
+			return nil
+		})
 		if err != nil {
 			return nil, err
-		}
-		for _, e := range entries {
-			if !e.IsDir() && isUpMigration(e.Name()) {
-				files = append(files, filepath.Join(p, e.Name()))
-			}
 		}
 	}
 	sort.Strings(files)
@@ -150,6 +156,11 @@ func (r *Runner) Run(ctx context.Context, files []string) ([]MigrationResult, er
 	// diff the resulting schema against each migration's pre-state.
 	for i := len(files) - 1; i >= 0; i-- {
 		r.verifyRollback(ctx, db, files[i], befores[i], &results[i])
+		if findDownFile(files[i]) == "" {
+			// Without a down migration the DB is not rolled back, so
+			// subsequent (earlier) rollback checks would be misleading.
+			break
+		}
 	}
 	return results, nil
 }
