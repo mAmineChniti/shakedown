@@ -63,7 +63,7 @@ jobs:
             Section: utils
             Priority: optional
             Architecture: ${arch}
-            Maintainer: mAmineChniti <amine@example.com>
+            Maintainer: mAmineChniti <emin.chniti@esprit.tn>
             Description: Migration rehearsal for databases
              shakedown executes your migrations against a disposable database and
              reports locks, rewrites, data-safety exposure, and rollback drift.
