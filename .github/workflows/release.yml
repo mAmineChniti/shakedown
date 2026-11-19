@@ -57,17 +57,7 @@ jobs:
             rm -rf "deb-${arch}"
             mkdir -p "deb-${arch}/usr/bin" "deb-${arch}/DEBIAN"
             install -m 0755 "${bin}" "deb-${arch}/usr/bin/shakedown"
-            cat > "deb-${arch}/DEBIAN/control" <<EOF
-            Package: shakedown
-            Version: ${ver}
-            Section: utils
-            Priority: optional
-            Architecture: ${arch}
-            Maintainer: mAmineChniti <emin.chniti@esprit.tn>
-            Description: Migration rehearsal for databases
-             shakedown executes your migrations against a disposable database and
-             reports locks, rewrites, data-safety exposure, and rollback drift.
-            EOF
+            printf 'Package: shakedown\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: %s\nMaintainer: mAmineChniti <emin.chniti@esprit.tn>\nDescription: Migration rehearsal for databases\n shakedown executes your migrations against a disposable database and\n reports locks, rewrites, data-safety exposure, and rollback drift.\n' "$ver" "$arch" > "deb-${arch}/DEBIAN/control"
             dpkg-deb --build --root-owner-group "deb-${arch}" "${pkg}"
           done
       - name: Checksums

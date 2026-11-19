@@ -149,10 +149,9 @@ func (e *Engine) Teardown(ctx context.Context) error {
 	return nil
 }
 
-
 func validVersion(v string) error {
 	for _, r := range v {
-		if !strings.ContainsRune("0123456789.-", r) {
+		if !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.:-", r) {
 			return fmt.Errorf("invalid MSSQL version %q", v)
 		}
 	}
